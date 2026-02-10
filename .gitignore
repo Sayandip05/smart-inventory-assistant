@@ -1,0 +1,4 @@
+venv/
+.env
+
+database/smart_inventory.db
