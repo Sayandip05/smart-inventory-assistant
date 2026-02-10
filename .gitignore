@@ -2,3 +2,9 @@ venv/
 .env
 
 database/smart_inventory.db
+
+# SQLite database files
+database/*.db
+database/*.sqlite
+database/*.sqlite3
+
