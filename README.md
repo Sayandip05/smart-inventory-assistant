@@ -222,9 +222,9 @@ flowchart TB
         FASTAPI[FastAPI Application]
 
         subgraph "API Routes"
-            ANALYTICS[/api/analytics]
-            INVENTORY[/api/inventory]
-            CHAT[/api/chat]
+            ANALYTICS["/api/analytics"]
+            INVENTORY["/api/inventory"]
+            CHAT["/api/chat"]
         end
 
         subgraph "Service Layer"
