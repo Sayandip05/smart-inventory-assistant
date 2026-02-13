@@ -318,10 +318,10 @@ flowchart TB
     FASTAPI -.->|Logs| LOGS
 
     %% Styling
-    classDef implemented fill:#90EE90,stroke:#228B22,stroke-width:2px
-    classDef upcoming fill:#FFD700,stroke:#FFA500,stroke-width:2px
-    classDef external fill:#87CEEB,stroke:#4682B4,stroke-width:2px
-    classDef database fill:#DDA0DD,stroke:#8B008B,stroke-width:2px
+    classDef implemented fill:#90EE90,stroke:#228B22,stroke-width:2px,color:black
+    classDef upcoming fill:#FFD700,stroke:#FFA500,stroke-width:2px,color:black
+    classDef external fill:#87CEEB,stroke:#4682B4,stroke-width:2px,color:black
+    classDef database fill:#DDA0DD,stroke:#8B008B,stroke-width:2px,color:black
 
     class FASTAPI,ANALYTICS,INVENTORY,CHAT,ANALYTICS_SVC,INV_SVC,AI_AGENT,LANGGRAPH,TOOLS,SQLITE implemented
     class UI,MOBILE,CHAT_UI,NGINX,RATE_LIMIT,POSTGRES,REDIS,EMAIL,SMS,SUPPLIERS,ACTIONS,DOCKER,TEST,DEPLOY,PROMETHEUS,GRAFANA,LOGS upcoming
