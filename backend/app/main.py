@@ -5,7 +5,7 @@ from app.database.connection import engine, Base
 from app.database.models import Location, Item, InventoryTransaction
 
 # Import routers
-from app.api.routes import analytics, chat  # ← Added chat
+from app.api.routes import analytics, chat, inventory  # ← Added inventory
 
 # Create FastAPI app
 app = FastAPI(
@@ -25,7 +25,8 @@ app.add_middleware(
 
 # Include routers
 app.include_router(analytics.router, prefix=settings.API_V1_PREFIX)
-app.include_router(chat.router, prefix=settings.API_V1_PREFIX)  # ← Added
+app.include_router(chat.router, prefix=settings.API_V1_PREFIX)
+app.include_router(inventory.router, prefix=settings.API_V1_PREFIX)  # ← Added
 
 @app.get("/")
 def root():
@@ -45,7 +46,11 @@ def health_check():
             "/api/analytics/heatmap",
             "/api/analytics/alerts",
             "/api/analytics/summary",
-            "/api/chat/query",           # ← Added
-            "/api/chat/suggestions"      # ← Added
+            "/api/chat/query",
+            "/api/chat/suggestions",
+            "/api/inventory/locations",      # ← Added
+            "/api/inventory/items",          # ← Added
+            "/api/inventory/transaction",    # ← Added
+            "/api/inventory/bulk-transaction" # ← Added
         ]
     }
