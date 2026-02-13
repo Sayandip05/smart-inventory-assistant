@@ -8,3 +8,7 @@ database/*.db
 database/*.sqlite
 database/*.sqlite3
 
+
+# Python cache
+__pycache__/
+*.pyc

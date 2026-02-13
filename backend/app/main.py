@@ -4,10 +4,14 @@ from app.config import settings
 from app.database.connection import engine, Base
 from app.database.models import Location, Item, InventoryTransaction
 
+# Import routers
+from app.api.routes import analytics
+
 # Create FastAPI app
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    version=settings.VERSION
+    version=settings.VERSION,
+    description="AI-powered inventory management for healthcare supply chains"
 )
 
 # CORS middleware
@@ -19,14 +23,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include routers
+app.include_router(analytics.router, prefix=settings.API_V1_PREFIX)
+
 @app.get("/")
 def root():
     return {
         "message": "Smart Inventory Assistant API",
         "version": settings.VERSION,
-        "status": "running"
+        "status": "running",
+        "docs": "/docs"
     }
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "database": "connected"}
+    return {
+        "status": "healthy",
+        "database": "connected",
+        "endpoints": [
+            "/api/analytics/heatmap",
+            "/api/analytics/alerts",
+            "/api/analytics/summary"
+        ]
+    }
