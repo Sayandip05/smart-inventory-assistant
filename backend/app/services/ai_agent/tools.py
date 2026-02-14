@@ -14,7 +14,7 @@ def set_db_session(db: Session):
     _db_session = db
 
 @tool
-def get_critical_items(location: Optional[str] = None, severity: str = "CRITICAL") -> List[Dict[str, Any]]:
+def get_critical_items(location: str = "", severity: str = "CRITICAL") -> List[Dict[str, Any]]:
     """
     Get list of items with critical or warning stock levels.
     
@@ -32,7 +32,7 @@ def get_critical_items(location: Optional[str] = None, severity: str = "CRITICAL
         alerts = get_critical_alerts(_db_session, severity)
         
         # Filter by location if specified
-        if location:
+        if location and location.strip():
             alerts = [
                 item for item in alerts 
                 if location.lower() in item.location_name.lower()
@@ -56,7 +56,7 @@ def get_critical_items(location: Optional[str] = None, severity: str = "CRITICAL
         return [{"error": str(e)}]
 
 @tool
-def get_stock_health(item: Optional[str] = None, location: Optional[str] = None) -> List[Dict[str, Any]]:
+def get_stock_health(item: str = "", location: str = "") -> List[Dict[str, Any]]:
     """
     Get current stock health status for specific items or locations.
     
@@ -74,14 +74,14 @@ def get_stock_health(item: Optional[str] = None, location: Optional[str] = None)
         stock_health = get_latest_stock_health(_db_session)
         
         # Filter by item if specified
-        if item:
+        if item and item.strip():
             stock_health = [
                 s for s in stock_health 
                 if item.lower() in s.item_name.lower()
             ]
         
         # Filter by location if specified
-        if location:
+        if location and location.strip():
             stock_health = [
                 s for s in stock_health 
                 if location.lower() in s.location_name.lower()
@@ -105,7 +105,7 @@ def get_stock_health(item: Optional[str] = None, location: Optional[str] = None)
         return [{"error": str(e)}]
 
 @tool
-def calculate_reorder_suggestions(location: Optional[str] = None) -> List[Dict[str, Any]]:
+def calculate_reorder_suggestions(location: str = "") -> List[Dict[str, Any]]:
     """
     Calculate recommended reorder quantities for critical items.
     
@@ -123,7 +123,7 @@ def calculate_reorder_suggestions(location: Optional[str] = None) -> List[Dict[s
         critical = get_critical_alerts(_db_session, "CRITICAL")
         
         # Filter by location if specified
-        if location:
+        if location and location.strip():
             critical = [
                 item for item in critical 
                 if location.lower() in item.location_name.lower()

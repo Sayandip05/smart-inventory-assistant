@@ -1,8 +1,7 @@
-from typing import TypedDict, Annotated, Sequence
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
-from langchain_groq import ChatGroq
-from langgraph.graph import StateGraph, END
-from langgraph.prebuilt import ToolNode
+from typing import TypedDict, Annotated
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+from langgraph.graph import StateGraph, END, add_messages
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.services.ai_agent.prompts import SYSTEM_PROMPT
@@ -14,16 +13,18 @@ from app.services.ai_agent.tools import (
     get_category_analysis,
     set_db_session
 )
+import json
 
-# Define agent state
+# Define agent state with proper message reducer
 class AgentState(TypedDict):
-    messages: Annotated[Sequence[BaseMessage], "The messages in the conversation"]
+    messages: Annotated[list, add_messages]
 
-# Initialize LLM
-llm = ChatGroq(
-    model="llama-3.1-70b-versatile",
+# Initialize LLM (using Groq's OpenAI-compatible endpoint)
+llm = ChatOpenAI(
+    model="openai/gpt-oss-20b",
     temperature=0.3,
-    groq_api_key=settings.GROQ_API_KEY
+    api_key=settings.GROQ_API_KEY,
+    base_url="https://api.groq.com/openai/v1",
 )
 
 # Available tools
@@ -35,26 +36,54 @@ tools = [
     get_category_analysis
 ]
 
+# Create a lookup dict for tool execution
+tool_map = {tool.name: tool for tool in tools}
+
 # Bind tools to LLM
 llm_with_tools = llm.bind_tools(tools)
 
 # Define agent node
 def agent_node(state: AgentState):
     """Main agent logic - decides what to do"""
-    messages = state["messages"]
+    messages = list(state["messages"])
     
-    # Add system prompt if first message
-    if len(messages) == 1 and isinstance(messages[0], HumanMessage):
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            messages[0]
-        ]
+    # Always prepend system prompt if not already present
+    if not messages or not isinstance(messages[0], SystemMessage):
+        messages = [SystemMessage(content=SYSTEM_PROMPT)] + messages
     
     response = llm_with_tools.invoke(messages)
     return {"messages": [response]}
 
-# Define tool execution node
-tool_node = ToolNode(tools)
+# Custom tool execution node (compatible with openai/gpt-oss-20b)
+def tool_node(state: AgentState):
+    """Execute tool calls from the last AI message"""
+    messages = state["messages"]
+    last_message = messages[-1]
+    
+    tool_messages = []
+    for tool_call in last_message.tool_calls:
+        tool_name = tool_call["name"]
+        tool_args = tool_call["args"]
+        
+        if tool_name in tool_map:
+            try:
+                result = tool_map[tool_name].invoke(tool_args)
+                if not isinstance(result, str):
+                    result = json.dumps(result, default=str)
+            except Exception as e:
+                result = json.dumps({"error": str(e)})
+        else:
+            result = json.dumps({"error": f"Unknown tool: {tool_name}"})
+        
+        tool_messages.append(
+            ToolMessage(
+                content=result,
+                tool_call_id=tool_call["id"],
+                name=tool_name,
+            )
+        )
+    
+    return {"messages": tool_messages}
 
 # Define routing logic
 def should_continue(state: AgentState):
