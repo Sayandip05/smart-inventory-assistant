@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from datetime import date, datetime
+from datetime import date
 from app.database.connection import get_db
-from app.database.models import Location, Item
+from app.database.models import Location, Item, InventoryTransaction
 from app.services.inventory_service import InventoryService
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
@@ -30,6 +30,22 @@ class BulkTransactionRequest(BaseModel):
     date: date
     items: List[TransactionItem]
     entered_by: Optional[str] = "staff"
+
+class CreateLocationRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=200)
+    type: str = Field(min_length=2, max_length=50)
+    region: str = Field(min_length=2, max_length=100)
+    address: Optional[str] = None
+
+class CreateItemRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=200)
+    category: str = Field(min_length=2, max_length=100)
+    unit: str = Field(min_length=1, max_length=50)
+    lead_time_days: int = Field(ge=1, le=365)
+    min_stock: int = Field(ge=0)
+
+class ResetDataRequest(BaseModel):
+    confirm: bool = False
 
 # GET endpoints
 @router.get("/locations")
@@ -66,6 +82,106 @@ def get_all_items(db: Session = Depends(get_db)):
             }
             for item in items
         ]
+    }
+
+@router.post("/locations")
+def create_location(
+    request: CreateLocationRequest,
+    db: Session = Depends(get_db)
+):
+    """Create a new location from user input"""
+    existing = db.query(Location).filter(Location.name == request.name.strip()).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Location with this name already exists")
+
+    location = Location(
+        name=request.name.strip(),
+        type=request.type.strip().lower(),
+        region=request.region.strip(),
+        address=request.address.strip() if request.address else None
+    )
+    db.add(location)
+    db.commit()
+    db.refresh(location)
+
+    return {
+        "success": True,
+        "message": "Location created successfully",
+        "data": {
+            "id": location.id,
+            "name": location.name,
+            "type": location.type,
+            "region": location.region,
+            "address": location.address
+        }
+    }
+
+@router.post("/items")
+def create_item(
+    request: CreateItemRequest,
+    db: Session = Depends(get_db)
+):
+    """Create a new item from user input"""
+    existing = db.query(Item).filter(Item.name == request.name.strip()).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Item with this name already exists")
+
+    item = Item(
+        name=request.name.strip(),
+        category=request.category.strip().lower(),
+        unit=request.unit.strip().lower(),
+        lead_time_days=request.lead_time_days,
+        min_stock=request.min_stock
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+
+    return {
+        "success": True,
+        "message": "Item created successfully",
+        "data": {
+            "id": item.id,
+            "name": item.name,
+            "category": item.category,
+            "unit": item.unit,
+            "lead_time_days": item.lead_time_days,
+            "min_stock": item.min_stock
+        }
+    }
+
+@router.post("/reset-data")
+def reset_inventory_data(
+    request: ResetDataRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Remove all existing data so inventory can be re-entered manually.
+    """
+    if not request.confirm:
+        raise HTTPException(status_code=400, detail="Set confirm=true to reset data")
+
+    try:
+        deleted_transactions = db.query(InventoryTransaction).count()
+        deleted_items = db.query(Item).count()
+        deleted_locations = db.query(Location).count()
+
+        deleted_transactions = db.query(InventoryTransaction).delete()
+        deleted_items = db.query(Item).delete()
+        deleted_locations = db.query(Location).delete()
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {
+        "success": True,
+        "message": "All inventory data cleared",
+        "data": {
+            "deleted_transactions": deleted_transactions,
+            "deleted_items": deleted_items,
+            "deleted_locations": deleted_locations
+        }
     }
 
 @router.get("/location/{location_id}/items")

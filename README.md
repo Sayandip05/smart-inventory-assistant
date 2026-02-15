@@ -10,6 +10,7 @@ Smart Inventory Assistant helps hospital administrators manage medicine inventor
 - **Automated alerts** for critical and warning stock levels
 - **Predictive analytics** with reorder recommendations
 - **Visual heatmaps** for quick status overview
+- **Role-based UI panels**: Vendor panel for data entry, Admin panel for dashboard + chatbot
 
 ## Tech Stack
 
@@ -74,10 +75,13 @@ smart-invantory-assistant/
 #### Inventory Management (`/api/inventory`)
 - `GET /locations` - List all 8 locations
 - `GET /items` - List all 30 medical items
+- `POST /locations` - Create location from user input
+- `POST /items` - Create item from user input
 - `GET /location/{id}/items` - Items with current stock for location
 - `GET /stock/{location_id}/{item_id}` - Current stock level
 - `POST /transaction` - Add single inventory transaction
 - `POST /bulk-transaction` - Batch entry for daily updates
+- `POST /reset-data` - Clear existing data before fresh manual entry
 
 #### AI Chatbot (`/api/chat`)
 - `POST /query` - Natural language inventory queries
@@ -113,6 +117,13 @@ The chatbot (powered by LangGraph + Groq) can:
 - CORS middleware for frontend integration
 - Input validation with Pydantic models
 - SQL injection protection via SQLAlchemy ORM
+- **Current limitation**: Role separation is UI-level only in Streamlit. Backend API endpoints are not yet protected by JWT/session/role authorization.
+- **Recommended next step**: Implement backend authentication + role-based authorization for secure vendor/admin separation.
+
+### 6. Frontend Panels (Current)
+- **Vendor Panel**: Data Entry page to add locations, items, and transactions
+- **Admin Panel**: Dashboard + Chatbot pages
+- Access is enforced in frontend session state and page guards
 
 ## Quickstart
 
@@ -433,7 +444,7 @@ LangGraph Workflow
 - Database file (`smart_inventory.db`) is gitignored
 - Docker files are placeholders for future deployment
 - AI features require Groq API key; app works without it for basic CRUD
-- Default data includes 8 Indian healthcare locations with realistic consumption patterns
+- Vendor/Admin separation is currently enforced at UI level only; backend API role authorization is pending.
 - Location profiles: High/Medium/Low volume × Good/Medium/Poor efficiency
 
 ## License
@@ -447,3 +458,4 @@ This is a personal project. Feel free to fork and extend!
 ---
 
 **Last Updated**: February 2026 | **Version**: 1.0.0
+

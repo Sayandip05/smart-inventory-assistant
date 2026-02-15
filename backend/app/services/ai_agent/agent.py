@@ -1,16 +1,18 @@
 from typing import TypedDict, Annotated
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
+from langchain_core.messages import HumanMessage, ToolMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END, add_messages
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.services.ai_agent.prompts import SYSTEM_PROMPT
 from app.services.ai_agent.tools import (
+    get_inventory_overview,
     get_critical_items,
     get_stock_health,
     calculate_reorder_suggestions,
     get_location_summary,
     get_category_analysis,
+    get_consumption_trends,
     set_db_session
 )
 import json
@@ -29,11 +31,13 @@ llm = ChatOpenAI(
 
 # Available tools
 tools = [
+    get_inventory_overview,
     get_critical_items,
     get_stock_health,
     calculate_reorder_suggestions,
     get_location_summary,
-    get_category_analysis
+    get_category_analysis,
+    get_consumption_trends,
 ]
 
 # Create a lookup dict for tool execution
@@ -142,6 +146,17 @@ class InventoryAgent:
             Response with answer and optional actions
         """
         try:
+            question_lower = question.lower()
+
+            # Fallback mode if no LLM key is configured.
+            if not settings.GROQ_API_KEY:
+                fallback_response = self._fallback_response(question_lower)
+                return {
+                    "success": True,
+                    "response": fallback_response,
+                    "question": question,
+                }
+
             # Create initial state
             initial_state = {
                 "messages": [HumanMessage(content=question)]
@@ -163,12 +178,64 @@ class InventoryAgent:
             }
             
         except Exception as e:
+            # If LLM/toolchain fails at runtime, use deterministic fallback.
+            fallback_response = self._fallback_response(question.lower())
             return {
-                "success": False,
+                "success": True,
                 "error": str(e),
-                "response": "I encountered an error processing your request. Please try rephrasing your question."
+                "response": fallback_response
             }
     
     def get_conversation_history(self) -> list:
         """Get chat history (placeholder for future implementation)"""
         return []
+
+    def _fallback_response(self, question_lower: str) -> str:
+        """Rule-based response path when LLM is unavailable."""
+        overview = get_inventory_overview.invoke({})
+        if isinstance(overview, dict) and not overview.get("has_data"):
+            return (
+                "Inventory data is empty. Add locations, items, and transactions from "
+                "the Data Entry page first."
+            )
+
+        if any(k in question_lower for k in ["trend", "usage", "consumption"]):
+            result = get_consumption_trends.invoke({})
+            return self._format_fallback_result("Consumption trend summary", result)
+
+        if any(k in question_lower for k in ["reorder", "order", "purchase"]):
+            result = calculate_reorder_suggestions.invoke({})
+            return self._format_fallback_result("Reorder suggestions", result)
+
+        if any(k in question_lower for k in ["critical", "warning", "alert"]):
+            severity = "WARNING" if "warning" in question_lower else "CRITICAL"
+            result = get_critical_items.invoke({"severity": severity})
+            return self._format_fallback_result(f"{severity} stock alerts", result)
+
+        if "category" in question_lower:
+            result = get_category_analysis.invoke({"category": ""})
+            return self._format_fallback_result("Category snapshot", result)
+
+        result = get_stock_health.invoke({})
+        return self._format_fallback_result("Current stock health", result)
+
+    @staticmethod
+    def _format_fallback_result(title: str, payload) -> str:
+        if isinstance(payload, dict):
+            if payload.get("error"):
+                return f"{title}: {payload['error']}"
+            if payload.get("info"):
+                return payload["info"]
+            return f"{title}:\n{json.dumps(payload, indent=2)}"
+
+        if isinstance(payload, list):
+            if not payload:
+                return f"{title}: no data found."
+            first = payload[0]
+            if isinstance(first, dict) and first.get("info"):
+                return first["info"]
+            if isinstance(first, dict) and first.get("error"):
+                return f"{title}: {first['error']}"
+            return f"{title}:\n{json.dumps(payload[:10], indent=2)}"
+
+        return f"{title}: {str(payload)}"

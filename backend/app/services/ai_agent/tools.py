@@ -1,8 +1,10 @@
+from datetime import timedelta
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from langchain_core.tools import tool
 from app.database.queries import get_latest_stock_health, get_critical_alerts
-from app.database.models import Location, Item
+from app.database.models import Location, Item, InventoryTransaction
 from app.utils.calculations import calculate_reorder_quantity
 
 # Global database session (will be set when agent is initialized)
@@ -12,6 +14,42 @@ def set_db_session(db: Session):
     """Set the database session for tools to use"""
     global _db_session
     _db_session = db
+
+
+def _no_data_message(message: str) -> List[Dict[str, Any]]:
+    return [{"info": message}]
+
+
+@tool
+def get_inventory_overview() -> Dict[str, Any]:
+    """
+    Return a live snapshot of configured data and transaction coverage.
+
+    Returns:
+        Counts for locations/items/transactions and transaction date range
+    """
+    if not _db_session:
+        return {"error": "Database not connected"}
+
+    try:
+        locations_count = _db_session.query(Location).count()
+        items_count = _db_session.query(Item).count()
+        transactions_count = _db_session.query(InventoryTransaction).count()
+        min_date, max_date = _db_session.query(
+            func.min(InventoryTransaction.date),
+            func.max(InventoryTransaction.date),
+        ).one()
+
+        return {
+            "locations": locations_count,
+            "items": items_count,
+            "transactions": transactions_count,
+            "transaction_start_date": str(min_date) if min_date else None,
+            "transaction_end_date": str(max_date) if max_date else None,
+            "has_data": transactions_count > 0,
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 @tool
 def get_critical_items(location: str = "", severity: str = "CRITICAL") -> List[Dict[str, Any]]:
@@ -29,6 +67,9 @@ def get_critical_items(location: str = "", severity: str = "CRITICAL") -> List[D
         return [{"error": "Database not connected"}]
     
     try:
+        if severity not in {"CRITICAL", "WARNING"}:
+            return [{"error": "Severity must be CRITICAL or WARNING"}]
+
         alerts = get_critical_alerts(_db_session, severity)
         
         # Filter by location if specified
@@ -38,6 +79,9 @@ def get_critical_items(location: str = "", severity: str = "CRITICAL") -> List[D
                 if location.lower() in item.location_name.lower()
             ]
         
+        if not alerts:
+            return _no_data_message("No matching low-stock alerts found.")
+
         # Format results
         results = []
         for alert in alerts[:20]:  # Limit to top 20
@@ -86,6 +130,9 @@ def get_stock_health(item: str = "", location: str = "") -> List[Dict[str, Any]]
                 s for s in stock_health 
                 if location.lower() in s.location_name.lower()
             ]
+
+        if not stock_health:
+            return _no_data_message("No stock health data found for the given filters.")
         
         # Format results
         results = []
@@ -128,6 +175,9 @@ def calculate_reorder_suggestions(location: str = "") -> List[Dict[str, Any]]:
                 item for item in critical 
                 if location.lower() in item.location_name.lower()
             ]
+
+        if not critical:
+            return _no_data_message("No critical items currently require reorder suggestions.")
         
         # Calculate reorder quantities
         suggestions = []
@@ -233,3 +283,73 @@ def get_category_analysis(category: str) -> List[Dict[str, Any]]:
         return results
     except Exception as e:
         return [{"error": str(e)}]
+
+
+@tool
+def get_consumption_trends(
+    item: str = "",
+    location: str = "",
+    days: int = 14
+) -> Dict[str, Any]:
+    """
+    Get daily issued quantities over recent days for trend analysis.
+
+    Args:
+        item: Optional item name filter
+        location: Optional location name filter
+        days: Number of recent days to include (1-90)
+
+    Returns:
+        Aggregated daily usage values and summary stats
+    """
+    if not _db_session:
+        return {"error": "Database not connected"}
+
+    days = max(1, min(days, 90))
+
+    try:
+        latest_date = _db_session.query(func.max(InventoryTransaction.date)).scalar()
+        if not latest_date:
+            return {"info": "No transaction data available yet."}
+
+        start_date = latest_date - timedelta(days=days - 1)
+
+        query = (
+            _db_session.query(
+                InventoryTransaction.date.label("date"),
+                func.sum(InventoryTransaction.issued).label("issued"),
+            )
+            .join(Location, InventoryTransaction.location_id == Location.id)
+            .join(Item, InventoryTransaction.item_id == Item.id)
+            .filter(InventoryTransaction.date >= start_date)
+        )
+
+        if item and item.strip():
+            query = query.filter(Item.name.ilike(f"%{item.strip()}%"))
+
+        if location and location.strip():
+            query = query.filter(Location.name.ilike(f"%{location.strip()}%"))
+
+        rows = (
+            query.group_by(InventoryTransaction.date)
+            .order_by(InventoryTransaction.date.asc())
+            .all()
+        )
+
+        if not rows:
+            return {"info": "No trend data found for the selected filters."}
+
+        series = [{"date": str(r.date), "issued": int(r.issued or 0)} for r in rows]
+        values = [point["issued"] for point in series]
+
+        return {
+            "start_date": str(start_date),
+            "end_date": str(latest_date),
+            "days_requested": days,
+            "points": series,
+            "total_issued": int(sum(values)),
+            "avg_daily_issued": round(sum(values) / len(values), 2),
+            "peak_daily_issued": int(max(values)),
+        }
+    except Exception as e:
+        return {"error": str(e)}

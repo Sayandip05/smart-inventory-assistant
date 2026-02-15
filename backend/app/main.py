@@ -1,20 +1,19 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.routes import analytics, chat, inventory
 from app.config import settings
-from app.database.connection import engine, Base
-from app.database.models import Location, Item, InventoryTransaction
+from app.database.connection import Base, engine
 
-# Import routers
-from app.api.routes import analytics, chat, inventory  # ← Added inventory
-
-# Create FastAPI app
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="AI-powered inventory management for healthcare supply chains"
+    description="AI-powered inventory management for healthcare supply chains",
 )
 
-# CORS middleware
+# Ensure core tables exist even when starting with an empty database.
+Base.metadata.create_all(bind=engine)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -23,10 +22,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
 app.include_router(analytics.router, prefix=settings.API_V1_PREFIX)
 app.include_router(chat.router, prefix=settings.API_V1_PREFIX)
-app.include_router(inventory.router, prefix=settings.API_V1_PREFIX)  # ← Added
+app.include_router(inventory.router, prefix=settings.API_V1_PREFIX)
+
 
 @app.get("/")
 def root():
@@ -34,8 +33,9 @@ def root():
         "message": "Smart Inventory Assistant API",
         "version": settings.VERSION,
         "status": "running",
-        "docs": "/docs"
+        "docs": "/docs",
     }
+
 
 @app.get("/health")
 def health_check():
@@ -48,9 +48,13 @@ def health_check():
             "/api/analytics/summary",
             "/api/chat/query",
             "/api/chat/suggestions",
-            "/api/inventory/locations",      # ← Added
-            "/api/inventory/items",          # ← Added
-            "/api/inventory/transaction",    # ← Added
-            "/api/inventory/bulk-transaction" # ← Added
-        ]
+            "/api/chat/history/{conversation_id}",
+            "/api/inventory/locations",
+            "/api/inventory/items",
+            "/api/inventory/location/{location_id}/items",
+            "/api/inventory/stock/{location_id}/{item_id}",
+            "/api/inventory/reset-data",
+            "/api/inventory/transaction",
+            "/api/inventory/bulk-transaction",
+        ],
     }

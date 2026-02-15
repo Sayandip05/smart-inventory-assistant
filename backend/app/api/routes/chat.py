@@ -170,9 +170,9 @@ def get_question_suggestions():
             {
                 "category": "Location-Specific",
                 "questions": [
-                    "What's the stock status in Mumbai?",
-                    "Show me critical items in Delhi",
-                    "How is Apollo Hospital doing?"
+                    "What's the stock status for my main warehouse?",
+                    "Show me critical items for location 1",
+                    "How is Central Clinic doing?"
                 ]
             },
             {
@@ -180,14 +180,14 @@ def get_question_suggestions():
                 "questions": [
                     "Do we have enough paracetamol?",
                     "Show me all antibiotic levels",
-                    "What's our insulin inventory?"
+                    "What's our inventory for item 3?"
                 ]
             },
             {
                 "category": "Reorder",
                 "questions": [
                     "What should I order today?",
-                    "Generate purchase order for Mumbai",
+                    "Generate purchase order for my location",
                     "Show me reorder recommendations"
                 ]
             },
