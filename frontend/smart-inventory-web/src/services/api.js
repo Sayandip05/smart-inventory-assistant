@@ -20,6 +20,8 @@ export const inventory = {
 
 export const chat = {
     query: (data) => api.post('/chat/query', data),
+    getSessions: () => api.get('/chat/sessions'),
+    getHistory: (id) => api.get(`/chat/history/${id}`),
 };
 
 export default api;

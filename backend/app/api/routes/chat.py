@@ -201,3 +201,30 @@ def get_question_suggestions():
             }
         ]
     }
+@router.get("/sessions")
+def get_chat_sessions():
+    """
+    Get list of active conversation sessions
+    """
+    sessions = []
+    for conv_id, msgs in conversations.items():
+        if msgs:
+            # Get first user message as title/preview
+            preview = "New Conversation"
+            timestamp = None
+            
+            for msg in msgs:
+                if msg["role"] == "user":
+                    preview = msg["content"][:50] + "..." if len(msg["content"]) > 50 else msg["content"]
+                    break
+            
+            sessions.append({
+                "id": conv_id,
+                "preview": preview,
+                "message_count": len(msgs)
+            })
+    
+    return {
+        "success": True,
+        "sessions": sessions
+    }
