@@ -165,24 +165,37 @@ class InventoryService:
         
         return latest.closing_stock if latest else None
     
+        return result.closing_stock if result else 0
+
     @staticmethod
     def get_location_items(
         db: Session,
         location_id: int
     ) -> list:
-        """Get all items for a location with their current stock"""
+        """Get all items for a location with their current stock and status"""
         # Get all items
         items = db.query(Item).all()
         
         result = []
         for item in items:
-            latest_stock = InventoryService.get_latest_stock(db, location_id, item.id)
+            latest_stock = InventoryService.get_latest_stock(db, location_id, item.id) or 0
+            
+            # Determine status
+            if latest_stock <= (item.min_stock * 0.5):
+                status = "CRITICAL"
+            elif latest_stock <= item.min_stock:
+                status = "WARNING"
+            else:
+                status = "HEALTHY"
+            
             result.append({
-                "item_id": item.id,
-                "item_name": item.name,
+                "id": item.id, # standardized to id to match other endpoints
+                "name": item.name,
                 "category": item.category,
                 "unit": item.unit,
-                "current_stock": latest_stock or 0
+                "min_stock": item.min_stock,
+                "current_stock": latest_stock,
+                "status": status
             })
         
         return result

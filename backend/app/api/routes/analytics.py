@@ -43,3 +43,10 @@ def get_summary(db: Session = Depends(get_db)):
     Returns summary of stock health across all locations and categories
     """
     return AnalyticsService.get_summary(db)
+
+@router.get("/dashboard/stats")
+def get_dashboard_stats(db: Session = Depends(get_db)):
+    """
+    Get aggregated data for admin dashboard charts
+    """
+    return AnalyticsService.get_dashboard_stats(db)

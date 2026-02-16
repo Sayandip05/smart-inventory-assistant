@@ -37,6 +37,7 @@ def get_latest_stock_health(db: Session):
             Item.name.label('item_name'),
             Item.category.label('category'),
             Item.lead_time_days,
+            Item.min_stock,
             InventoryTransaction.closing_stock.label('current_stock'),
             subq.c.avg_daily_usage,
             case(

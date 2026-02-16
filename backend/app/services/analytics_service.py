@@ -119,3 +119,75 @@ class AnalyticsService:
                 "success": False,
                 "error": str(e)
             }
+
+    @staticmethod
+    def get_dashboard_stats(db: Session) -> Dict[str, Any]:
+        """Get aggregated statistics for dashboard charts"""
+        try:
+            stock_health = get_latest_stock_health(db)
+            
+            # 1. Category Distribution (Pie Chart)
+            category_counts = {}
+            for item in stock_health:
+                category_counts[item.category] = category_counts.get(item.category, 0) + 1
+            
+            category_data = [
+                {"name": cat, "value": count} 
+                for cat, count in category_counts.items()
+            ]
+            
+            # 2. Low Stock Items (Bar Chart)
+            # Filter items where current_stock < min_stock
+            low_stock_items = [
+                item for item in stock_health 
+                if item.current_stock < item.min_stock
+            ]
+            # Sort by severity of shortage (percentage)
+            low_stock_items.sort(key=lambda x: x.current_stock / x.min_stock if x.min_stock > 0 else 1)
+            
+            low_stock_data = [
+                {
+                    "name": item.item_name,
+                    "stock": item.current_stock,
+                    "min_stock": item.min_stock,
+                    "shortage": item.min_stock - item.current_stock
+                }
+                for item in low_stock_items[:5] # Top 5
+            ]
+            
+            # 3. Stock Value by Location (Bar Chart)
+            # Assuming value = quantity for now since we don't have price
+            location_stock = {}
+            for item in stock_health:
+                location_stock[item.location_name] = location_stock.get(item.location_name, 0) + item.current_stock
+                
+            location_data = [
+                {"name": loc, "value": qty}
+                for loc, qty in location_stock.items()
+            ]
+
+            # 4. Stock Health Status (Pie Chart)
+            status_counts = {"CRITICAL": 0, "WARNING": 0, "HEALTHY": 0}
+            for item in stock_health:
+                status_counts[item.health_status] += 1
+                
+            status_data = [
+                {"name": status, "value": count, "color": "#ef4444" if status == "CRITICAL" else "#f59e0b" if status == "WARNING" else "#22c55e"}
+                for status, count in status_counts.items()
+                if count > 0
+            ]
+            
+            return {
+                "success": True,
+                "data": {
+                    "category_distribution": category_data,
+                    "low_stock_items": low_stock_data,
+                    "location_stock": location_data,
+                    "status_distribution": status_data
+                }
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
