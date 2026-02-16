@@ -1,7 +1,13 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+from pathlib import Path
+
+# Get the project root directory (current file is in backend/app/config.py)
+# Root is backend/../ -> ../
+root_dir = Path(__file__).resolve().parent.parent.parent
+env_path = root_dir / ".env"
+load_dotenv(dotenv_path=env_path)
 
 class Settings:
     # Database
