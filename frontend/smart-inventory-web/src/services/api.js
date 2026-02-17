@@ -22,6 +22,13 @@ export const chat = {
     query: (data) => api.post('/chat/query', data),
     getSessions: () => api.get('/chat/sessions'),
     getHistory: (id) => api.get(`/chat/history/${id}`),
+    transcribe: (audioBlob) => {
+        const formData = new FormData();
+        formData.append('file', audioBlob, 'recording.wav');
+        return api.post('/chat/transcribe', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+    },
 };
 
 export default api;

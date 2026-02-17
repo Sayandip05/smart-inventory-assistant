@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { chat } from '../../services/api';
-import { Send, User, Bot, Loader, History, X, MessageSquare } from 'lucide-react';
+import { Send, User, Bot, Loader, History, X, MessageSquare, Mic, Square } from 'lucide-react';
 
 const Chatbot = () => {
     const [messages, setMessages] = useState([
@@ -11,7 +11,11 @@ const Chatbot = () => {
     const [showHistory, setShowHistory] = useState(false);
     const [sessions, setSessions] = useState([]);
     const [currentConversationId, setCurrentConversationId] = useState(null);
+    const [isRecording, setIsRecording] = useState(false);
+    const [isTranscribing, setIsTranscribing] = useState(false);
     const messagesEndRef = useRef(null);
+    const mediaRecorderRef = useRef(null);
+    const audioChunksRef = useRef([]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -20,6 +24,15 @@ const Chatbot = () => {
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
+
+    // Cleanup media recorder on unmount
+    useEffect(() => {
+        return () => {
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+                mediaRecorderRef.current.stop();
+            }
+        };
+    }, []);
 
     const loadHistory = async () => {
         try {
@@ -85,6 +98,71 @@ const Chatbot = () => {
             setMessages(prev => [...prev, { role: 'assistant', content: "Network error. Please try again." }]);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    // ─── Voice Recording ───────────────────────────────────────
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream, {
+                mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                    ? 'audio/webm;codecs=opus'
+                    : 'audio/webm',
+            });
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunksRef.current.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = async () => {
+                // Stop all tracks to release the microphone
+                stream.getTracks().forEach(track => track.stop());
+
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                audioChunksRef.current = [];
+
+                // Send to backend for transcription
+                setIsTranscribing(true);
+                try {
+                    const response = await chat.transcribe(audioBlob);
+                    if (response.data.success && response.data.text) {
+                        setInput(prev => prev ? `${prev} ${response.data.text}` : response.data.text);
+                    } else {
+                        console.error("Transcription returned no text");
+                    }
+                } catch (err) {
+                    console.error("Transcription failed:", err);
+                    alert("Voice transcription failed. Please check your Sarvam AI API key.");
+                } finally {
+                    setIsTranscribing(false);
+                }
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
+        } catch (err) {
+            console.error("Microphone access denied:", err);
+            alert("Please allow microphone access to use voice input.");
+        }
+    };
+
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+        }
+    };
+
+    const handleVoiceClick = () => {
+        if (isRecording) {
+            stopRecording();
+        } else {
+            startRecording();
         }
     };
 
@@ -183,18 +261,49 @@ const Chatbot = () => {
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-4 border-t border-slate-100 bg-white">
+                    {/* Transcribing indicator */}
+                    {isTranscribing && (
+                        <div className="flex items-center gap-2 text-blue-500 text-xs mb-2 px-1">
+                            <Loader size={12} className="animate-spin" />
+                            Transcribing your voice...
+                        </div>
+                    )}
+                    {/* Recording indicator */}
+                    {isRecording && (
+                        <div className="flex items-center gap-2 text-red-500 text-xs mb-2 px-1">
+                            <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                            </span>
+                            Recording... Click the stop button when done.
+                        </div>
+                    )}
                     <div className="flex items-center gap-2">
                         <input
                             type="text"
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
-                            placeholder="Type your question..."
+                            placeholder={isTranscribing ? "Transcribing..." : "Type your question..."}
                             className="flex-1 px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            disabled={isLoading}
+                            disabled={isLoading || isTranscribing}
                         />
+                        {/* Voice button */}
+                        <button
+                            type="button"
+                            onClick={handleVoiceClick}
+                            disabled={isLoading || isTranscribing}
+                            className={`p-3 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${isRecording
+                                    ? 'bg-red-500 text-white hover:bg-red-600 animate-pulse'
+                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                }`}
+                            title={isRecording ? "Stop recording" : "Start voice input"}
+                        >
+                            {isRecording ? <Square size={20} /> : <Mic size={20} />}
+                        </button>
+                        {/* Send button */}
                         <button
                             type="submit"
-                            disabled={isLoading || !input.trim()}
+                            disabled={isLoading || !input.trim() || isTranscribing}
                             className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             <Send size={20} />

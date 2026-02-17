@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 from app.database.connection import get_db
 from app.services.ai_agent.agent import InventoryAgent
+from app.config import settings
+import httpx
 
 router = APIRouter(prefix="/chat", tags=["Chatbot"])
 
@@ -228,3 +230,63 @@ def get_chat_sessions():
         "success": True,
         "sessions": sessions
     }
+
+@router.post("/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)):
+    """
+    Transcribe audio to English text using Sarvam AI.
+    
+    Accepts audio file (wav, webm, mp3, etc.) and returns transcribed text.
+    The Sarvam AI model translates any Indian language speech to English.
+    """
+    if not settings.SARVAM_API_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="SARVAM_API_KEY is not configured. Add it to your .env file."
+        )
+    
+    try:
+        audio_bytes = await file.read()
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://api.sarvam.ai/speech-to-text-translate",
+                headers={
+                    "api-subscription-key": settings.SARVAM_API_KEY,
+                },
+                files={
+                    "file": (file.filename or "audio.wav", audio_bytes, file.content_type or "audio/wav"),
+                },
+                data={
+                    "model": "saaras:v3",
+                    "with_diarization": "false",
+                },
+            )
+        
+        if response.status_code != 200:
+            error_detail = response.text
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Sarvam AI API error: {error_detail}"
+            )
+        
+        result = response.json()
+        transcript = result.get("transcript", "")
+        
+        return {
+            "success": True,
+            "text": transcript,
+        }
+        
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504,
+            detail="Sarvam AI API timed out. Please try again."
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Transcription failed: {str(e)}"
+        )

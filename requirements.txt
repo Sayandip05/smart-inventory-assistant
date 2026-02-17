@@ -10,3 +10,4 @@ langchain-openai
 langchain-groq
 langchain-community
 langgraph
+httpx
