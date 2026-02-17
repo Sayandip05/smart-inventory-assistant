@@ -3,9 +3,11 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 from app.database.connection import get_db
+from app.database.models import ChatSession, ChatMessage
 from app.services.ai_agent.agent import InventoryAgent
 from app.config import settings
 import httpx
+import uuid
 
 router = APIRouter(prefix="/chat", tags=["Chatbot"])
 
@@ -22,10 +24,6 @@ class ChatResponse(BaseModel):
     conversation_id: Optional[str] = None
     suggested_actions: Optional[List[dict]] = None
     error: Optional[str] = None
-
-# In-memory conversation storage (simple implementation)
-# In production, use Redis or database
-conversations = {}
 
 @router.post("/query", response_model=ChatResponse)
 def chat_query(
@@ -87,19 +85,20 @@ def chat_query(
                 "action": "view_alerts"
             })
         
-        # Store conversation (simple implementation)
-        conv_id = request.conversation_id or f"conv_{request.user_id}_{len(conversations)}"
-        if conv_id not in conversations:
-            conversations[conv_id] = []
+        # Store conversation in database
+        conv_id = request.conversation_id
+        if not conv_id:
+            conv_id = f"conv_{uuid.uuid4().hex[:12]}"
+            # Create new session
+            title = request.question[:50] + "..." if len(request.question) > 50 else request.question
+            session = ChatSession(id=conv_id, user_id=request.user_id, title=title)
+            db.add(session)
         
-        conversations[conv_id].append({
-            "role": "user",
-            "content": request.question
-        })
-        conversations[conv_id].append({
-            "role": "assistant",
-            "content": result["response"]
-        })
+        # Add user message
+        db.add(ChatMessage(session_id=conv_id, role="user", content=request.question))
+        # Add assistant message
+        db.add(ChatMessage(session_id=conv_id, role="assistant", content=result["response"]))
+        db.commit()
         
         return ChatResponse(
             success=True,
@@ -112,6 +111,7 @@ def chat_query(
     except HTTPException as he:
         raise he
     except Exception as e:
+        db.rollback()
         return ChatResponse(
             success=False,
             response="An unexpected error occurred. Please try again.",
@@ -120,29 +120,37 @@ def chat_query(
         )
 
 @router.get("/history/{conversation_id}")
-def get_chat_history(conversation_id: str):
+def get_chat_history(conversation_id: str, db: Session = Depends(get_db)):
     """
     Get conversation history for a specific conversation
     """
-    if conversation_id not in conversations:
+    session = db.query(ChatSession).filter(ChatSession.id == conversation_id).first()
+    if not session:
         return {
             "success": False,
             "error": "Conversation not found"
         }
     
+    messages = [
+        {"role": msg.role, "content": msg.content}
+        for msg in session.messages
+    ]
+    
     return {
         "success": True,
         "conversation_id": conversation_id,
-        "messages": conversations[conversation_id]
+        "messages": messages
     }
 
 @router.delete("/history/{conversation_id}")
-def clear_chat_history(conversation_id: str):
+def clear_chat_history(conversation_id: str, db: Session = Depends(get_db)):
     """
     Clear conversation history
     """
-    if conversation_id in conversations:
-        del conversations[conversation_id]
+    session = db.query(ChatSession).filter(ChatSession.id == conversation_id).first()
+    if session:
+        db.delete(session)
+        db.commit()
         return {
             "success": True,
             "message": "Conversation history cleared"
@@ -204,26 +212,20 @@ def get_question_suggestions():
         ]
     }
 @router.get("/sessions")
-def get_chat_sessions():
+def get_chat_sessions(db: Session = Depends(get_db)):
     """
     Get list of active conversation sessions
     """
+    db_sessions = db.query(ChatSession).order_by(ChatSession.updated_at.desc()).all()
+    
     sessions = []
-    for conv_id, msgs in conversations.items():
-        if msgs:
-            # Get first user message as title/preview
-            preview = "New Conversation"
-            timestamp = None
-            
-            for msg in msgs:
-                if msg["role"] == "user":
-                    preview = msg["content"][:50] + "..." if len(msg["content"]) > 50 else msg["content"]
-                    break
-            
+    for s in db_sessions:
+        message_count = len(s.messages)
+        if message_count > 0:
             sessions.append({
-                "id": conv_id,
-                "preview": preview,
-                "message_count": len(msgs)
+                "id": s.id,
+                "preview": s.title,
+                "message_count": message_count
             })
     
     return {

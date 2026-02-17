@@ -48,3 +48,27 @@ class InventoryTransaction(Base):
     # Relationships
     location = relationship("Location", back_populates="transactions")
     item = relationship("Item", back_populates="transactions")
+
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+    
+    id = Column(String(100), primary_key=True)
+    user_id = Column(String(100), default="admin")
+    title = Column(String(200), default="New Conversation")
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan", order_by="ChatMessage.created_at")
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String(100), ForeignKey("chat_sessions.id"), nullable=False)
+    role = Column(String(20), nullable=False)  # 'user' or 'assistant'
+    content = Column(Text, nullable=False)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    
+    # Relationships
+    session = relationship("ChatSession", back_populates="messages")
