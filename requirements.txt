@@ -11,3 +11,4 @@ langchain-groq
 langchain-community
 langgraph
 httpx
+chromadb

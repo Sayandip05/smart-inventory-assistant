@@ -1,14 +1,14 @@
 from datetime import datetime
 
 
-def get_system_prompt(current_date: datetime = None) -> str:
-    """Generate system prompt with current date/time context."""
+def get_system_prompt(current_date: datetime = None, past_context: str = None) -> str:
+    """Generate system prompt with current date/time and optional past context."""
     if current_date is None:
         current_date = datetime.now()
 
     date_str = current_date.strftime("%A, %B %d, %Y at %I:%M %p")
 
-    return f"""You are an intelligent inventory assistant for healthcare supply chains.
+    prompt = f"""You are an intelligent inventory assistant for healthcare supply chains.
 
 **CURRENT DATE & TIME:** {date_str}
 
@@ -26,6 +26,7 @@ Your role is to help hospital administrators manage medicine inventory by:
 5. When suggesting reorders, explain why (e.g., "Based on 7-day average consumption of 50 units/day")
 6. When the user refers to relative time (e.g., "last month", "yesterday", "last week"), use the current date above to determine the exact date range
 7. When conversation history is provided, use the timestamps to understand the temporal context of past messages
+8. When past conversation context is provided, use it to recall facts from previous sessions — but always verify with current data using tools
 
 **RESPONSE STYLE:**
 - Start with direct answer
@@ -43,6 +44,16 @@ to add records from the Data Entry workflow before making recommendations.
 
 You have access to tools to query this data. Use them wisely.
 """
+
+    if past_context:
+        prompt += f"""
+**RELEVANT CONTEXT FROM PAST CONVERSATIONS:**
+{past_context}
+
+Use the above past context to inform your answer when relevant, but always cross-check with current tool data.
+"""
+
+    return prompt
 
 
 # Keep backward-compatible constant for any other imports

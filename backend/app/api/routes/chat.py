@@ -5,6 +5,7 @@ from typing import Optional, List
 from app.database.connection import get_db
 from app.database.models import ChatSession, ChatMessage
 from app.services.ai_agent.agent import InventoryAgent
+from app.services.memory.vector_store import get_vector_memory
 from app.config import settings
 import httpx
 import uuid
@@ -99,6 +100,17 @@ def chat_query(
         # Add assistant message
         db.add(ChatMessage(session_id=conv_id, role="assistant", content=result["response"]))
         db.commit()
+        
+        # Store in ChromaDB for long-term semantic memory
+        try:
+            memory = get_vector_memory()
+            if memory.is_available:
+                from datetime import datetime
+                now = datetime.now()
+                memory.add_message(conv_id, "user", request.question, now)
+                memory.add_message(conv_id, "assistant", result["response"], now)
+        except Exception as e:
+            print(f"Warning: Failed to store in vector memory: {e}")
         
         return ChatResponse(
             success=True,

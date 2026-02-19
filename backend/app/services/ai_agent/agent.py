@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.services.ai_agent.prompts import get_system_prompt
 from app.database.models import ChatMessage
+from app.services.memory.vector_store import get_vector_memory
 from app.services.ai_agent.tools import (
     get_inventory_overview,
     get_critical_items,
@@ -53,9 +54,10 @@ def agent_node(state: AgentState):
     """Main agent logic - decides what to do"""
     messages = list(state["messages"])
     
-    # Always prepend system prompt with current date/time
+    # Always prepend system prompt with current date/time and past context
     if not messages or not isinstance(messages[0], SystemMessage):
-        messages = [SystemMessage(content=get_system_prompt(datetime.now()))] + messages
+        past_context = state.get("past_context", None) if isinstance(state, dict) else None
+        messages = [SystemMessage(content=get_system_prompt(datetime.now(), past_context=past_context))] + messages
     
     response = llm_with_tools.invoke(messages)
     return {"messages": [response]}
@@ -198,9 +200,34 @@ class InventoryAgent:
             # Fetch conversation history from SQLite
             history_messages = self._get_conversation_history(conversation_id)
 
-            # Create initial state with history + new question
+            # Search ChromaDB for relevant past context (from OTHER sessions)
+            past_context = None
+            try:
+                memory = get_vector_memory()
+                if memory.is_available:
+                    results = memory.search_relevant(
+                        query=question,
+                        n_results=5,
+                        exclude_session=conversation_id,
+                    )
+                    if results:
+                        context_lines = []
+                        for r in results:
+                            context_lines.append(
+                                f"[{r['timestamp']}] ({r['role']}): {r['content']}"
+                            )
+                        past_context = "\n".join(context_lines)
+            except Exception as e:
+                print(f"Warning: Vector memory search failed: {e}")
+
+            # Build system prompt with past context
+            system_prompt = get_system_prompt(datetime.now(), past_context=past_context)
+
+            # Create initial state with system prompt + history + new question
             initial_state = {
-                "messages": history_messages + [HumanMessage(content=question)]
+                "messages": [
+                    SystemMessage(content=system_prompt)
+                ] + history_messages + [HumanMessage(content=question)]
             }
             
             # Run the graph
