@@ -1,10 +1,12 @@
 from typing import TypedDict, Annotated
-from langchain_core.messages import HumanMessage, ToolMessage, SystemMessage
+from datetime import datetime
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END, add_messages
 from sqlalchemy.orm import Session
 from app.config import settings
-from app.services.ai_agent.prompts import SYSTEM_PROMPT
+from app.services.ai_agent.prompts import get_system_prompt
+from app.database.models import ChatMessage
 from app.services.ai_agent.tools import (
     get_inventory_overview,
     get_critical_items,
@@ -51,9 +53,9 @@ def agent_node(state: AgentState):
     """Main agent logic - decides what to do"""
     messages = list(state["messages"])
     
-    # Always prepend system prompt if not already present
+    # Always prepend system prompt with current date/time
     if not messages or not isinstance(messages[0], SystemMessage):
-        messages = [SystemMessage(content=SYSTEM_PROMPT)] + messages
+        messages = [SystemMessage(content=get_system_prompt(datetime.now()))] + messages
     
     response = llm_with_tools.invoke(messages)
     return {"messages": [response]}
@@ -135,12 +137,48 @@ class InventoryAgent:
         self.db = db
         set_db_session(db)  # Set DB session for tools
     
-    def query(self, question: str) -> dict:
+    def _get_conversation_history(self, conversation_id: str, limit: int = 10) -> list:
         """
-        Process a user question
+        Fetch recent messages from SQLite and convert to LangChain messages
+        with timestamp context.
+        """
+        if not conversation_id:
+            return []
+        
+        try:
+            db_messages = (
+                self.db.query(ChatMessage)
+                .filter(ChatMessage.session_id == conversation_id)
+                .order_by(ChatMessage.created_at.asc())
+                .all()
+            )
+            
+            # Take the last N messages
+            recent = db_messages[-limit:] if len(db_messages) > limit else db_messages
+            
+            history = []
+            for msg in recent:
+                # Format timestamp for temporal context
+                ts = msg.created_at.strftime("%Y-%m-%d %H:%M") if msg.created_at else "unknown time"
+                content_with_time = f"[{ts}] {msg.content}"
+                
+                if msg.role == "user":
+                    history.append(HumanMessage(content=content_with_time))
+                elif msg.role == "assistant":
+                    history.append(AIMessage(content=content_with_time))
+            
+            return history
+        except Exception as e:
+            print(f"Warning: Failed to load conversation history: {e}")
+            return []
+    
+    def query(self, question: str, conversation_id: str = None) -> dict:
+        """
+        Process a user question with conversation context.
         
         Args:
             question: User's natural language question
+            conversation_id: Optional session ID to load history from
         
         Returns:
             Response with answer and optional actions
@@ -157,9 +195,12 @@ class InventoryAgent:
                     "question": question,
                 }
 
-            # Create initial state
+            # Fetch conversation history from SQLite
+            history_messages = self._get_conversation_history(conversation_id)
+
+            # Create initial state with history + new question
             initial_state = {
-                "messages": [HumanMessage(content=question)]
+                "messages": history_messages + [HumanMessage(content=question)]
             }
             
             # Run the graph

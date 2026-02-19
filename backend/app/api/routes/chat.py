@@ -55,8 +55,8 @@ def chat_query(
         # Initialize agent
         agent = InventoryAgent(db)
         
-        # Process query
-        result = agent.query(request.question)
+        # Process query with conversation context
+        result = agent.query(request.question, conversation_id=request.conversation_id)
         
         if not result["success"]:
             return ChatResponse(
