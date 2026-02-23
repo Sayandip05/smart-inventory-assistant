@@ -12,3 +12,4 @@ langchain-community
 langgraph
 httpx
 chromadb
+langsmith
