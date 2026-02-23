@@ -1,12 +1,14 @@
 # Smart Inventory Assistant
 
-An AI-powered inventory management system for healthcare supply chains. Built with FastAPI, SQLAlchemy, and LangChain for intelligent inventory insights and natural language queries.
+An AI-powered inventory management system for healthcare supply chains. Built with FastAPI, React, LangChain, and ChromaDB for intelligent inventory insights, voice-enabled queries, and persistent conversational memory.
 
 ## Overview
 
 Smart Inventory Assistant helps hospital administrators manage medicine inventory across multiple locations by:
 - **Real-time stock monitoring** across 8 healthcare locations
-- **AI-powered chatbot** for natural language inventory queries
+- **AI-powered chatbot** with conversational memory and voice input
+- **Speech-to-Text** via Sarvam AI for hands-free queries
+- **Long-term semantic memory** using ChromaDB for cross-session recall
 - **Automated alerts** for critical and warning stock levels
 - **Predictive analytics** with reorder recommendations
 - **Visual heatmaps** for quick status overview
@@ -15,8 +17,11 @@ Smart Inventory Assistant helps hospital administrators manage medicine inventor
 ## Tech Stack
 
 - **Backend**: FastAPI 0.104.1, SQLAlchemy 2.0.23, Pydantic 2.5.0
-- **Database**: SQLite with 60 days of historical data
-- **AI/ML**: LangChain, LangGraph, Groq API (Llama-3.1-70b)
+- **Frontend**: React 18 + Vite, Tailwind CSS
+- **Database**: SQLite (chat sessions + inventory), ChromaDB (vector memory)
+- **AI/ML**: LangChain, LangGraph, Groq API (GPT-oss-20b)
+- **Speech-to-Text**: Sarvam AI (saaras:v3 model)
+- **Memory**: SQLite (short-term context) + ChromaDB (long-term semantic search)
 - **Deployment**: Docker (placeholder), Uvicorn
 - **Configuration**: python-dotenv
 
@@ -31,25 +36,37 @@ smart-invantory-assistant/
 │       ├── api/
 │       │   └── routes/
 │       │       ├── analytics.py       # Analytics endpoints
-│       │       ├── chat.py            # Chatbot endpoints
+│       │       ├── chat.py            # Chatbot + STT endpoints
 │       │       └── inventory.py       # CRUD endpoints
 │       ├── database/
 │       │   ├── connection.py          # SQLite engine/session
-│       │   ├── models.py              # ORM models
+│       │   ├── models.py              # ORM models (incl. ChatSession, ChatMessage)
 │       │   └── queries.py             # Stock health queries
 │       ├── services/
 │       │   ├── analytics_service.py   # Analytics business logic
 │       │   ├── inventory_service.py   # Transaction management
-│       │   └── ai_agent/
-│       │       ├── agent.py           # LangGraph agent
-│       │       ├── tools.py           # Database query tools
-│       │       └── prompts.py         # System prompts
+│       │   ├── ai_agent/
+│       │   │   ├── agent.py           # LangGraph agent + memory integration
+│       │   │   ├── tools.py           # Database query tools
+│       │   │   └── prompts.py         # Dynamic system prompts (date-aware)
+│       │   └── memory/
+│       │       ├── __init__.py
+│       │       └── vector_store.py    # ChromaDB long-term semantic memory
 │       └── utils/
 │           └── calculations.py        # Utility functions
+├── frontend/
+│   └── smart-inventory-web/           # React + Vite frontend
+│       └── src/
+│           ├── pages/admin/
+│           │   ├── Chatbot.jsx        # Chat UI with mic button
+│           │   └── Dashboard.jsx      # Analytics dashboard
+│           └── services/api.js        # Axios API client
 ├── database/
 │   ├── schema.sql                     # Database schema
 │   ├── seed_data.py                   # 60 days sample data generator
 │   └── smart_inventory.db             # Local SQLite DB
+├── data/
+│   └── chromadb/                      # ChromaDB persistent storage (auto-created)
 ├── requirements.txt
 ├── docker-compose.yml                 # Empty (placeholder)
 ├── Dockerfile                         # Placeholder
@@ -84,9 +101,11 @@ smart-invantory-assistant/
 - `POST /reset-data` - Clear existing data before fresh manual entry
 
 #### AI Chatbot (`/api/chat`)
-- `POST /query` - Natural language inventory queries
+- `POST /query` - Natural language inventory queries (with conversation memory)
+- `POST /transcribe` - Speech-to-text via Sarvam AI
+- `GET /sessions` - List all chat sessions
 - `GET /suggestions` - Predefined question suggestions
-- `GET /history/{conversation_id}` - Conversation history
+- `GET /history/{conversation_id}` - Conversation history (persisted in SQLite)
 - `DELETE /history/{conversation_id}` - Clear history
 
 ### 3. AI Agent Capabilities
@@ -95,6 +114,10 @@ The chatbot (powered by LangGraph + Groq) can:
 - Provide location-specific inventory status
 - Calculate reorder recommendations with reasoning
 - Analyze consumption trends
+- **Remember conversation context** within a session (short-term memory)
+- **Recall relevant facts from past sessions** via semantic search (long-term memory)
+- **Understand relative time** references (e.g., "last month", "yesterday")
+- Accept **voice input** via Speech-to-Text (Sarvam AI)
 - Format responses in natural language with actionable insights
 
 **Example queries**:
@@ -112,24 +135,52 @@ The chatbot (powered by LangGraph + Groq) can:
   - HEALTHY: > 7 days remaining
 - **Reorder formula**: (Daily Usage × Lead Time × Safety Factor) - Current Stock
 
-### 5. Security & Configuration
+### 5. Speech-to-Text (Sarvam AI)
+- **Voice Input**: Mic button in chat UI records audio via MediaRecorder API
+- **Transcription**: Audio sent to Sarvam AI's `speech-to-text-translate` endpoint (saaras:v3 model)
+- **Auto-translation**: Supports Hindi/regional language input, translates to English
+- **Seamless UX**: Transcribed text fills the input field for review before sending
+
+### 6. Conversational Memory
+
+#### Short-Term Memory (SQLite)
+- `ChatSession` and `ChatMessage` tables persist every conversation
+- Agent loads last 10 messages with timestamps before answering
+- Enables follow-up questions like "What else?" or "Tell me more"
+
+#### Long-Term Memory (ChromaDB)
+- Every Q&A pair is embedded and stored in a persistent ChromaDB collection
+- Before answering, agent searches ChromaDB for semantically relevant past conversations
+- Current session is excluded (already loaded via SQLite) to avoid duplication
+- **Graceful degradation**: If ChromaDB is unavailable, bot still works with SQLite-only
+- **No API key needed**: Uses ChromaDB's built-in local embeddings
+
+#### Temporal Awareness
+- System prompt includes **current date/time** dynamically
+- Each message carries a timestamp (e.g., `[2026-02-20 00:05]`)
+- Agent resolves relative time ("last month", "yesterday") using date context
+
+### 7. Security & Configuration
 - Environment-based configuration (.env)
 - CORS middleware for frontend integration
 - Input validation with Pydantic models
 - SQL injection protection via SQLAlchemy ORM
-- **Current limitation**: Role separation is UI-level only in Streamlit. Backend API endpoints are not yet protected by JWT/session/role authorization.
+- **Current limitation**: Role separation is UI-level only. Backend API endpoints are not yet protected by JWT/session/role authorization.
 - **Recommended next step**: Implement backend authentication + role-based authorization for secure vendor/admin separation.
 
-### 6. Frontend Panels (Current)
+### 8. Frontend (React + Vite)
 - **Vendor Panel**: Data Entry page to add locations, items, and transactions
 - **Admin Panel**: Dashboard + Chatbot pages
-- Access is enforced in frontend session state and page guards
+- **Chat UI**: Real-time chat with microphone button for voice input
+- Built with React 18, Vite, and Tailwind CSS
 
 ## Quickstart
 
 ### Prerequisites
 - Python 3.11+
+- Node.js 18+ (for frontend)
 - (Optional) Groq API key for AI features
+- (Optional) Sarvam AI API key for voice input
 
 ### Installation
 
@@ -150,21 +201,27 @@ pip install -r requirements.txt
 
 # Setup environment
 cp .env.example .env
-# Edit .env and add your GROQ_API_KEY (optional)
+# Edit .env and add your GROQ_API_KEY and SARVAM_API_KEY (optional)
 
 # Generate sample data
 cd database
 python seed_data.py
 
-# Start server
+# Start backend server
 cd ../backend
 uvicorn app.main:app --reload
+
+# Start frontend (in a new terminal)
+cd frontend/smart-inventory-web
+npm install
+npm run dev
 ```
 
 ### Access
-- API Docs: http://localhost:8000/docs
-- Health Check: http://localhost:8000/health
-- Root: http://localhost:8000/
+- **Frontend**: http://localhost:5173
+- **API Docs**: http://localhost:8000/docs
+- **Health Check**: http://localhost:8000/health
+- **Root**: http://localhost:8000/
 
 ## API Usage Examples
 
@@ -210,6 +267,7 @@ python test_agent.py
 |----------|---------|-------------|
 | `DATABASE_PATH` | `../database/smart_inventory.db` | SQLite database location |
 | `GROQ_API_KEY` | `None` | Groq API key for AI features |
+| `SARVAM_API_KEY` | `None` | Sarvam AI key for Speech-to-Text |
 | `ENVIRONMENT` | `development` | App environment |
 | `CORS_ORIGINS` | `http://localhost:3000,...` | Allowed frontend origins |
 | `API_V1_PREFIX` | `/api` | API route prefix |
@@ -299,6 +357,8 @@ flowchart TB
     LANGGRAPH --> GROQ
     LANGGRAPH --> TOOLS
     TOOLS --> SQLITE
+    AI_AGENT --> CHROMADB[(ChromaDB<br/>Vector Memory)]
+    AI_AGENT --> SARVAM[Sarvam AI<br/>Speech-to-Text]
 
     %% Services to Database
     ANALYTICS_SVC --> SQLITE
@@ -334,61 +394,66 @@ flowchart TB
     classDef external fill:#87CEEB,stroke:#4682B4,stroke-width:2px,color:black
     classDef database fill:#DDA0DD,stroke:#8B008B,stroke-width:2px,color:black
 
-    class FASTAPI,ANALYTICS,INVENTORY,CHAT,ANALYTICS_SVC,INV_SVC,AI_AGENT,LANGGRAPH,TOOLS,SQLITE implemented
+    class FASTAPI,ANALYTICS,INVENTORY,CHAT,ANALYTICS_SVC,INV_SVC,AI_AGENT,LANGGRAPH,TOOLS,SQLITE,CHROMADB implemented
     class UI,MOBILE,CHAT_UI,NGINX,RATE_LIMIT,POSTGRES,REDIS,EMAIL,SMS,SUPPLIERS,ACTIONS,DOCKER,TEST,DEPLOY,PROMETHEUS,GRAFANA,LOGS upcoming
-    class GROQ,GITHUB external
-    class SQLITE,POSTGRES,REDIS database
+    class GROQ,GITHUB,SARVAM external
+    class SQLITE,POSTGRES,REDIS,CHROMADB database
 ```
 
 ### Data Flow Description
 
 #### Current Implementation (Green)
 1. **FastAPI Backend** - Core application with 3 API route groups
-2. **Analytics Service** - Heatmap, alerts, and summary calculations
-3. **Inventory Service** - Transaction management and stock tracking
-4. **AI Agent** - LangGraph-based conversational interface with Groq LLM
-5. **SQLite Database** - Local development database with 60 days of sample data
+2. **React Frontend** - Dashboard, Chatbot with voice input, Data Entry
+3. **Analytics Service** - Heatmap, alerts, and summary calculations
+4. **Inventory Service** - Transaction management and stock tracking
+5. **AI Agent** - LangGraph-based conversational interface with Groq LLM
+6. **Speech-to-Text** - Sarvam AI integration for voice queries
+7. **SQLite Database** - Inventory data + persistent chat sessions
+8. **ChromaDB** - Vector database for semantic long-term memory
 
 #### Upcoming Pipeline (Yellow)
-1. **Frontend Layer** - React web UI and mobile app for user interaction
-2. **API Gateway** - Nginx reverse proxy with rate limiting
-3. **Production Database** - PostgreSQL migration from SQLite
-4. **Caching** - Redis for query optimization and session storage
-5. **Notifications** - Email/SMS alerts for critical stock levels
-6. **CI/CD** - GitHub Actions for automated testing and deployment
-7. **Monitoring** - Prometheus + Grafana for metrics and alerting
+1. **API Gateway** - Nginx reverse proxy with rate limiting
+2. **Production Database** - PostgreSQL migration from SQLite
+3. **Caching** - Redis for query optimization and session storage
+4. **Notifications** - Email/SMS alerts for critical stock levels
+5. **CI/CD** - GitHub Actions for automated testing and deployment
+6. **Monitoring** - Prometheus + Grafana for metrics and alerting
 
 ### Request Flow Example
 
 ```
-User Query: "What should I order for Mumbai?"
+User Query: "What should I order for Mumbai?" (text or voice 🎤)
     ↓
-Frontend UI [UPCOMING]
-    ↓
-Nginx Load Balancer [UPCOMING]
-    ↓
+React Frontend (Chatbot.jsx)
+    ↓ (voice → Sarvam AI STT → text)
 FastAPI /api/chat/query
     ↓
 AI Agent Service
+    ├─→ ChromaDB Search (recall past conversations)
+    ├─→ SQLite Fetch (load current thread history)
     ↓
 LangGraph Workflow
+    ├─→ System Prompt [date + past context + history]
     ├─→ Groq LLM (understand intent)
-    └─→ Database Tools (fetch data)
+    └─→ Database Tools (fetch inventory data)
             ↓
         SQLite Query
             ↓
     Response Generation
             ↓
-    JSON Response with Actions
+    Save to SQLite + ChromaDB
             ↓
-    Frontend Display [UPCOMING]
+    JSON Response → React UI
 ```
 
 ## Upcoming Features
 
 | Feature | Status | Priority | ETA |
 |---------|--------|----------|-----|
-| **Frontend UI** | 🟡 In Planning | High | March 2026 |
+| **Frontend UI** | ✅ Done | High | — |
+| **Speech-to-Text** | ✅ Done | High | — |
+| **Conversational Memory** | ✅ Done | High | — |
 | **PostgreSQL Migration** | 🟡 In Planning | Medium | March 2026 |
 | **CI/CD Pipeline** | 🟡 In Planning | Medium | April 2026 |
 | **User Authentication** | 🔴 Not Started | Medium | April 2026 |
@@ -396,7 +461,6 @@ LangGraph Workflow
 | **Email/SMS Alerts** | 🔴 Not Started | Low | May 2026 |
 | **Advanced Forecasting** | 🔴 Not Started | Low | June 2026 |
 
-- **User Input Interface**: React-based frontend with real-time chat, inventory management dashboard, and analytics visualization
 - **Full CI/CD Pipeline**: GitHub Actions → Docker build → Automated tests → Deploy to cloud (AWS/GCP)
 - **User Authentication**: JWT-based auth with role-based access control (admin, staff, viewer)
 - **Advanced Analytics**: ML-based consumption forecasting using historical trends
@@ -442,8 +506,12 @@ LangGraph Workflow
 ## Notes
 
 - Database file (`smart_inventory.db`) is gitignored
+- ChromaDB data is stored in `data/chromadb/` (auto-created, gitignored)
 - Docker files are placeholders for future deployment
-- AI features require Groq API key; app works without it for basic CRUD
+- AI features require Groq API key; app works without it for basic CRUD (fallback mode)
+- Speech-to-Text requires Sarvam AI API key; chat still works via text without it
+- ChromaDB runs 100% locally with built-in embeddings — no API key needed
+- If ChromaDB is unavailable, the bot gracefully degrades to SQLite-only memory
 - Vendor/Admin separation is currently enforced at UI level only; backend API role authorization is pending.
 - Location profiles: High/Medium/Low volume × Good/Medium/Poor efficiency
 
@@ -457,5 +525,5 @@ This is a personal project. Feel free to fork and extend!
 
 ---
 
-**Last Updated**: February 2026 | **Version**: 1.0.0
+**Last Updated**: February 2026 | **Version**: 2.0.0
 
