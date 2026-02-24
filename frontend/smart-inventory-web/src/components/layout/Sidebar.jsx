@@ -1,11 +1,12 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Package, MessageSquare, LogOut } from 'lucide-react';
+import { LayoutDashboard, Package, MessageSquare, LogOut, ClipboardList, Users } from 'lucide-react';
 
 const Sidebar = () => {
     const navItems = [
         { path: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { path: '/admin/inventory', label: 'Inventory', icon: Package },
+        { path: '/admin/requisitions', label: 'Requisitions', icon: ClipboardList },
         { path: '/admin/chat', label: 'AI Assistant', icon: MessageSquare },
     ];
 
@@ -34,7 +35,14 @@ const Sidebar = () => {
                 ))}
             </nav>
 
-            <div className="mt-auto pt-4 border-t border-slate-800">
+            <div className="mt-auto pt-4 border-t border-slate-800 space-y-1">
+                <NavLink
+                    to="/staff"
+                    className="flex items-center space-x-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+                >
+                    <Users size={20} />
+                    <span className="font-medium">Staff Portal</span>
+                </NavLink>
                 <NavLink
                     to="/vendor"
                     className="flex items-center space-x-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
