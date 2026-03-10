@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
+from app.core.exceptions import NotFoundError, ValidationError
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -67,7 +68,7 @@ def create_requisition(
     )
 
     if not result["success"]:
-        raise HTTPException(status_code=400, detail=result["error"])
+        raise ValidationError(result["error"])
 
     return result
 
@@ -101,7 +102,7 @@ def get_requisition(requisition_id: int, db: Session = Depends(get_db)):
     """Get full details of a single requisition."""
     data = RequisitionService.get_requisition(db, requisition_id)
     if not data:
-        raise HTTPException(status_code=404, detail="Requisition not found")
+        raise NotFoundError("Requisition", requisition_id)
     return {"success": True, "data": data}
 
 
@@ -120,7 +121,7 @@ def approve_requisition(
     )
 
     if not result["success"]:
-        raise HTTPException(status_code=400, detail=result["error"])
+        raise ValidationError(result["error"])
 
     return result
 
@@ -140,7 +141,7 @@ def reject_requisition(
     )
 
     if not result["success"]:
-        raise HTTPException(status_code=400, detail=result["error"])
+        raise ValidationError(result["error"])
 
     return result
 
@@ -159,6 +160,6 @@ def cancel_requisition(
     )
 
     if not result["success"]:
-        raise HTTPException(status_code=400, detail=result["error"])
+        raise ValidationError(result["error"])
 
     return result

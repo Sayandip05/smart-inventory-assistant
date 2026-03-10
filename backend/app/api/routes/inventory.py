@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
+from app.core.exceptions import NotFoundError, DuplicateError, ValidationError, AppException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -92,7 +93,7 @@ def create_location(
     """Create a new location from user input"""
     existing = db.query(Location).filter(Location.name == request.name.strip()).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Location with this name already exists")
+        raise DuplicateError(f"Location '{request.name}' already exists")
 
     location = Location(
         name=request.name.strip(),
@@ -124,7 +125,7 @@ def create_item(
     """Create a new item from user input"""
     existing = db.query(Item).filter(Item.name == request.name.strip()).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Item with this name already exists")
+        raise DuplicateError(f"Item '{request.name}' already exists")
 
     item = Item(
         name=request.name.strip(),
@@ -159,7 +160,7 @@ def reset_inventory_data(
     Remove all existing data so inventory can be re-entered manually.
     """
     if not request.confirm:
-        raise HTTPException(status_code=400, detail="Set confirm=true to reset data")
+        raise ValidationError("Set confirm=true to reset data")
 
     try:
         deleted_transactions = db.query(InventoryTransaction).count()
@@ -172,7 +173,7 @@ def reset_inventory_data(
         db.commit()
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise AppException(str(e))
 
     return {
         "success": True,
@@ -194,7 +195,7 @@ def get_location_items(
     # Verify location exists
     location = db.query(Location).filter(Location.id == location_id).first()
     if not location:
-        raise HTTPException(status_code=404, detail="Location not found")
+        raise NotFoundError("Location", location_id)
     
     items = InventoryService.get_location_items(db, location_id)
     
@@ -244,12 +245,12 @@ def add_single_transaction(
     # Validate location exists
     location = db.query(Location).filter(Location.id == request.location_id).first()
     if not location:
-        raise HTTPException(status_code=404, detail="Location not found")
+        raise NotFoundError("Location", request.location_id)
     
     # Validate item exists
     item = db.query(Item).filter(Item.id == request.item_id).first()
     if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
+        raise NotFoundError("Item", request.item_id)
     
     result = InventoryService.add_transaction(
         db=db,
@@ -263,7 +264,7 @@ def add_single_transaction(
     )
     
     if not result["success"]:
-        raise HTTPException(status_code=400, detail=result["error"])
+        raise ValidationError(result["error"])
     
     return result
 
@@ -293,7 +294,7 @@ def add_bulk_transactions(
     # Validate location exists
     location = db.query(Location).filter(Location.id == request.location_id).first()
     if not location:
-        raise HTTPException(status_code=404, detail="Location not found")
+        raise NotFoundError("Location", request.location_id)
     
     # Convert to format expected by service
     items_data = [

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, UploadFile, File
+from app.core.exceptions import ValidationError, AppException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
@@ -9,6 +10,9 @@ from app.services.memory.vector_store import get_vector_memory
 from app.config import settings
 import httpx
 import uuid
+import logging
+
+logger = logging.getLogger("smart_inventory.chat")
 
 router = APIRouter(prefix="/chat", tags=["Chatbot"])
 
@@ -48,10 +52,7 @@ def chat_query(
     try:
         # Validate input
         if not request.question or len(request.question.strip()) < 3:
-            raise HTTPException(
-                status_code=400,
-                detail="Question must be at least 3 characters"
-            )
+            raise ValidationError("Question must be at least 3 characters")
         
         # Initialize agent
         agent = InventoryAgent(db)
@@ -110,7 +111,7 @@ def chat_query(
                 memory.add_message(conv_id, "user", request.question, now)
                 memory.add_message(conv_id, "assistant", result["response"], now)
         except Exception as e:
-            print(f"Warning: Failed to store in vector memory: {e}")
+            logger.warning("Failed to store in vector memory: %s", e)
         
         return ChatResponse(
             success=True,
@@ -254,10 +255,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
     The Sarvam AI model translates any Indian language speech to English.
     """
     if not settings.SARVAM_API_KEY:
-        raise HTTPException(
-            status_code=500,
-            detail="SARVAM_API_KEY is not configured. Add it to your .env file."
-        )
+        raise AppException("SARVAM_API_KEY is not configured. Add it to your .env file.")
     
     try:
         audio_bytes = await file.read()
@@ -279,10 +277,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
         
         if response.status_code != 200:
             error_detail = response.text
-            raise HTTPException(
-                status_code=response.status_code,
-                detail=f"Sarvam AI API error: {error_detail}"
-            )
+            raise AppException(f"Sarvam AI API error: {error_detail}")
         
         result = response.json()
         transcript = result.get("transcript", "")
@@ -293,14 +288,8 @@ async def transcribe_audio(file: UploadFile = File(...)):
         }
         
     except httpx.TimeoutException:
-        raise HTTPException(
-            status_code=504,
-            detail="Sarvam AI API timed out. Please try again."
-        )
-    except HTTPException:
+        raise AppException("Sarvam AI API timed out. Please try again.")
+    except AppException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Transcription failed: {str(e)}"
-        )
+        raise AppException(f"Transcription failed: {str(e)}")
