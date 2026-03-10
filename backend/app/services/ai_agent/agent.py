@@ -8,6 +8,9 @@ from app.config import settings
 from app.services.ai_agent.prompts import get_system_prompt
 from app.database.models import ChatMessage
 from app.services.memory.vector_store import get_vector_memory
+import logging
+
+logger = logging.getLogger("smart_inventory.agent")
 from app.services.ai_agent.tools import (
     get_inventory_overview,
     get_critical_items,
@@ -171,7 +174,7 @@ class InventoryAgent:
             
             return history
         except Exception as e:
-            print(f"Warning: Failed to load conversation history: {e}")
+            logger.warning("Failed to load conversation history: %s", e)
             return []
     
     def query(self, question: str, conversation_id: str = None) -> dict:
@@ -218,7 +221,7 @@ class InventoryAgent:
                             )
                         past_context = "\n".join(context_lines)
             except Exception as e:
-                print(f"Warning: Vector memory search failed: {e}")
+                logger.warning("Vector memory search failed: %s", e)
 
             # Build system prompt with past context
             system_prompt = get_system_prompt(datetime.now(), past_context=past_context)

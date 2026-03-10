@@ -11,6 +11,9 @@ from chromadb.config import Settings
 from datetime import datetime
 from pathlib import Path
 import os
+import logging
+
+logger = logging.getLogger("smart_inventory.memory")
 
 
 class VectorMemory:
@@ -42,7 +45,7 @@ class VectorMemory:
             )
             self._available = True
         except Exception as e:
-            print(f"[VectorMemory] ChromaDB init failed, running without vector memory: {e}")
+            logger.warning("ChromaDB init failed, running without vector memory: %s", e)
             self._available = False
 
     @property
@@ -85,7 +88,7 @@ class VectorMemory:
                 }],
             )
         except Exception as e:
-            print(f"[VectorMemory] Failed to store message: {e}")
+            logger.warning("Failed to store message in vector memory: %s", e)
 
     def search_relevant(self, query: str, n_results: int = 5, exclude_session: str = None) -> list[dict]:
         """
@@ -132,7 +135,7 @@ class VectorMemory:
             return matches
 
         except Exception as e:
-            print(f"[VectorMemory] Search failed: {e}")
+            logger.warning("Vector memory search failed: %s", e)
             return []
 
     def get_stats(self) -> dict:
