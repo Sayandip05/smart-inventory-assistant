@@ -2,6 +2,12 @@
 
 An AI-powered inventory management system for healthcare supply chains. Built with FastAPI, React, LangChain, and ChromaDB for intelligent inventory insights, voice-enabled queries, and persistent conversational memory.
 
+> **Architecture**: Modular Monolith — a single deployable unit with cleanly separated internal modules (repositories, services, routes) that communicate through dependency injection, not HTTP calls. Easy to develop and test now, easy to split into microservices later if needed.
+
+> **Status**: 10/27 modules implemented (37%) | 14 modules remaining
+
+---
+
 ## Overview
 
 Smart Inventory Assistant helps hospital administrators manage medicine inventory across multiple locations by:
@@ -14,16 +20,23 @@ Smart Inventory Assistant helps hospital administrators manage medicine inventor
 - **Visual heatmaps** for quick status overview
 - **Role-based UI panels**: Vendor panel for data entry, Admin panel for dashboard + chatbot
 
+---
+
 ## Tech Stack
 
-- **Backend**: FastAPI 0.104.1, SQLAlchemy 2.0.23, Pydantic 2.5.0
-- **Frontend**: React 18 + Vite, Tailwind CSS
-- **Database**: SQLite (chat sessions + inventory), ChromaDB (vector memory)
-- **AI/ML**: LangChain, LangGraph, Groq API (GPT-oss-20b)
-- **Speech-to-Text**: Sarvam AI (saaras:v3 model)
-- **Memory**: SQLite (short-term context) + ChromaDB (long-term semantic search)
-- **Deployment**: Docker (placeholder), Uvicorn
-- **Configuration**: python-dotenv
+| Layer | Technology |
+|-------|------------|
+| **Backend** | FastAPI 0.104.1, SQLAlchemy 2.0.23, Pydantic 2.8+ |
+| **Frontend** | React 18 + Vite, Tailwind CSS |
+| **Database** | SQLite (chat sessions + inventory), ChromaDB (vector memory) |
+| **AI/ML** | LangChain, LangGraph, Groq API (LLaMA) |
+| **Speech-to-Text** | Sarvam AI (saaras:v3 model) |
+| **Memory** | SQLite (short-term context) + ChromaDB (long-term semantic search) |
+| **Observability** | LangSmith (LLM tracing), Structured logging, Request correlation IDs |
+| **Deployment** | Docker (placeholder), Uvicorn |
+| **Configuration** | python-dotenv, centralized Settings class |
+
+---
 
 ## Project Structure
 
@@ -31,58 +44,402 @@ Smart Inventory Assistant helps hospital administrators manage medicine inventor
 smart-invantory-assistant/
 ├── backend/
 │   └── app/
-│       ├── main.py                    # FastAPI entry point
-│       ├── config.py                  # Environment configuration
+│       ├── main.py                     # FastAPI entry point + middleware registration
+│       ├── config.py                   # Centralized Settings (env-based)
 │       ├── api/
 │       │   └── routes/
-│       │       ├── analytics.py       # Analytics endpoints
-│       │       ├── chat.py            # Chatbot + STT endpoints
-│       │       └── inventory.py       # CRUD endpoints
+│       │       ├── analytics.py        # Analytics endpoints
+│       │       ├── chat.py             # Chatbot + STT endpoints
+│       │       ├── inventory.py        # Inventory CRUD (DI-injected)
+│       │       └── requisition.py      # Stock-OUT requisition workflow
+│       ├── core/                       # Cross-cutting concerns
+│       │   ├── exceptions.py           # Custom exception hierarchy (8 classes)
+│       │   ├── error_handlers.py       # Global FastAPI exception handlers
+│       │   ├── logging_config.py       # Structured logging setup
+│       │   └── dependencies.py         # FastAPI DI factories (repos → services)
+│       ├── middleware/                 # Request pipeline
+│       │   └── request_logger.py      # Request timing + X-Request-ID correlation
+│       ├── repositories/               # Data access layer
+│       │   ├── inventory_repo.py       # All inventory DB queries (20 methods)
+│       │   └── requisition_repo.py     # All requisition DB queries (15 methods)
+│       ├── schemas/                    # Response models
+│       │   └── __init__.py             # APIResponse, PaginatedResponse, ErrorResponse
 │       ├── database/
-│       │   ├── connection.py          # SQLite engine/session
-│       │   ├── models.py              # ORM models (incl. ChatSession, ChatMessage)
+│       │   ├── connection.py           # SQLite engine/session factory
+│       │   ├── models.py              # ORM models (7 tables)
 │       │   └── queries.py             # Stock health queries
 │       ├── services/
-│       │   ├── analytics_service.py   # Analytics business logic
-│       │   ├── inventory_service.py   # Transaction management
+│       │   ├── analytics_service.py    # Analytics business logic
+│       │   ├── inventory_service.py    # Transaction management (DI-injected)
+│       │   ├── requisition_service.py  # Requisition workflow (DI-injected)
 │       │   ├── ai_agent/
-│       │   │   ├── agent.py           # LangGraph agent + memory integration
-│       │   │   ├── tools.py           # Database query tools
-│       │   │   └── prompts.py         # Dynamic system prompts (date-aware)
+│       │   │   ├── agent.py            # LangGraph agent + memory
+│       │   │   ├── tools.py            # Database query tools
+│       │   │   └── prompts.py          # Dynamic system prompts
 │       │   └── memory/
-│       │       ├── __init__.py
-│       │       └── vector_store.py    # ChromaDB long-term semantic memory
+│       │       └── vector_store.py     # ChromaDB long-term semantic memory
 │       └── utils/
-│           └── calculations.py        # Utility functions
+│           └── calculations.py         # Utility functions
 ├── frontend/
-│   └── smart-inventory-web/           # React + Vite frontend
+│   └── smart-inventory-web/            # React + Vite frontend
 │       └── src/
-│           ├── pages/admin/
-│           │   ├── Chatbot.jsx        # Chat UI with mic button
-│           │   └── Dashboard.jsx      # Analytics dashboard
-│           └── services/api.js        # Axios API client
+│           ├── pages/
+│           │   ├── admin/
+│           │   │   ├── Chatbot.jsx     # Chat UI with mic button
+│           │   │   ├── Dashboard.jsx   # Analytics dashboard
+│           │   │   ├── Requisitions.jsx# Manager approval panel
+│           │   │   └── Inventory.jsx  # Inventory management
+│           │   ├── staff/
+│           │   │   └── StaffRequisition.jsx  # Staff request form
+│           │   └── vendor/
+│           │       └── DataEntry.jsx   # Vendor stock-in form
+│           ├── components/
+│           │   └── layout/
+│           │       ├── AdminLayout.jsx # Admin layout wrapper
+│           │       └── Sidebar.jsx     # Navigation menu
+│           └── services/
+│               └── api.js             # Axios API client
 ├── database/
-│   ├── schema.sql                     # Database schema
-│   ├── seed_data.py                   # 60 days sample data generator
-│   └── smart_inventory.db             # Local SQLite DB
-├── data/
-│   └── chromadb/                      # ChromaDB persistent storage (auto-created)
+│   ├── schema.sql                      # Full schema (7 tables + indexes)
+│   ├── seed_data.py                    # Sample data generator
+│   └── smart_inventory.db              # Local SQLite DB (gitignored)
+├── data/chromadb/                      # ChromaDB storage (auto-created)
 ├── requirements.txt
-├── docker-compose.yml                 # Empty (placeholder)
-├── Dockerfile                         # Placeholder
-└── .env.example                       # Environment template
+├── .env.example
+├── Dockerfile                          # Placeholder
+├── docker-compose.yml                  # Placeholder
+└── implementation_plan.md              # 27-module implementation roadmap
 ```
+
+---
+
+## System Architecture Diagram
+
+```mermaid
+flowchart TB
+    subgraph "Frontend Layer"
+        direction TB
+        REACT[React 18 + Vite]
+        ROUTER[React Router]
+        AXIOS[Axios Client]
+        TAILWIND[Tailwind CSS]
+    end
+
+    subgraph "FastAPI Backend"
+        direction TB
+        MAIN[main.py - Entry Point]
+        
+        subgraph "API Routes"
+            ROUTES1[/api/analytics]
+            ROUTES2[/api/inventory]
+            ROUTES3[/api/chat]
+            ROUTES4[/api/requisition]
+        end
+        
+        subgraph "Core Infrastructure"
+            EXCEPT[exceptions.py<br/>8 Custom Exceptions]
+            HANDLERS[error_handlers.py<br/>Global Handlers]
+            LOGGING[logging_config.py<br/>Structured Logging]
+            DEPS[dependencies.py<br/>DI Factories]
+        end
+        
+        subgraph "Middleware"
+            REQLOG[request_logger.py<br/>X-Request-ID + Timing]
+        end
+        
+        subgraph "Services Layer"
+            ANALYTICS[analytics_service.py]
+            INVENTORY[inventory_service.py]
+            REQUISITION[requisition_service.py]
+            
+            subgraph "AI Agent"
+                AGENT[agent.py<br/>LangGraph]
+                TOOLS[tools.py<br/>DB Tools]
+                PROMPTS[prompts.py<br/>System Prompts]
+            end
+            
+            subgraph "Memory"
+                VECTOR[vector_store.py<br/>ChromaDB]
+            end
+        end
+        
+        subgraph "Repositories"
+            INV_REPO[inventory_repo.py<br/>20 Methods]
+            REQ_REPO[requisition_repo.py<br/>15 Methods]
+        end
+        
+        subgraph "Database"
+            SQLALCHEMY[SQLAlchemy 2.0]
+            MODELS[models.py<br/>7 ORM Models]
+        end
+    end
+
+    subgraph "External Services"
+        GROQ[Groq API<br/>LLaMA LLM]
+        SARVAM[Sarvam AI<br/>Speech-to-Text]
+        LANGSMITH[LangSmith<br/>LLM Tracing]
+    end
+
+    subgraph "Data Storage"
+        SQLITE[(SQLite<br/>Inventory + Sessions)]
+        CHROMADB[(ChromaDB<br/>Vector Memory)]
+    end
+
+    REACT --> AXIOS
+    AXIOS --> MAIN
+    MAIN --> ROUTES1
+    MAIN --> ROUTES2
+    MAIN --> ROUTES3
+    MAIN --> ROUTES4
+    
+    ROUTES1 --> ANALYTICS
+    ROUTES2 --> INVENTORY
+    ROUTES3 --> AGENT
+    ROUTES4 --> REQUISITION
+    
+    ANALYTICS --> INV_REPO
+    INVENTORY --> INV_REPO
+    REQUISITION --> REQ_REPO
+    
+    AGENT --> TOOLS
+    AGENT --> PROMPTS
+    AGENT --> VECTOR
+    TOOLS --> INV_REPO
+    
+    INV_REPO --> SQLALCHEMY
+    REQ_REPO --> SQLALCHEMY
+    
+    ANALYTICS --> LOGGING
+    INVENTORY --> LOGGING
+    REQUISITION --> LOGGING
+    
+    ROUTES1 --> EXCEPT
+    ROUTES2 --> EXCEPT
+    ROUTES3 --> EXCEPT
+    ROUTES4 --> EXCEPT
+    
+    EXCEPT --> HANDLERS
+    
+    MAIN --> REQLOG
+    
+    SQLALCHEMY --> MODELS
+    MODELS --> SQLITE
+    
+    AGENT --> GROQ
+    AGENT --> SARVAM
+    AGENT --> LANGSMITH
+```
+
+---
+
+## Data Flow Architecture
+
+```mermaid
+flowchart TB
+    subgraph "User Request"
+        USER[(User)]
+        VOICE[🎤 Voice Input]
+        TEXT[📝 Text Input]
+    end
+
+    subgraph "Frontend"
+        CHAT[Chatbot.jsx]
+        API[api.js - Axios]
+    end
+
+    subgraph "Backend - Chat Flow"
+        ROUTE[/api/chat/query]
+        AGENT[AI Agent Service]
+        
+        subgraph "Memory Retrieval"
+            SQLITE[(SQLite<br/>Session History)]
+            CHROMADB[(ChromaDB<br/>Semantic Memory)]
+        end
+        
+        subgraph "LangGraph Workflow"
+            PROMPT[System Prompt<br/>+ Date Context]
+            LLM[Groq LLM]
+            TOOLS[Database Tools]
+        end
+    end
+
+    subgraph "Response Flow"
+        SAVE_SQL[Save to SQLite]
+        SAVE_CHROMA[Save to ChromaDB]
+        JSON[(JSON Response)]
+    end
+
+    USER --> VOICE
+    USER --> TEXT
+    
+    VOICE --> |"1. Record Audio"| CHAT
+    TEXT --> CHAT
+    
+    CHAT --> |"2. HTTP POST"| API
+    API --> ROUTE
+    
+    ROUTE --> AGENT
+    
+    AGENT --> |"3. Load Session"| SQLITE
+    AGENT --> |"4. Semantic Search"| CHROMADB
+    
+    AGENT --> PROMPT
+    PROMPT --> LLM
+    LLM --> TOOLS
+    
+    TOOLS --> |"5. Query DB"| SQLITE
+    
+    LLM --> |"6. Generate Response"| SAVE_SQL
+    LLM --> |"7. Store Memory"| SAVE_CHROMA
+    
+    SAVE_SQL --> JSON
+    SAVE_CHROMA --> JSON
+    
+    JSON --> API
+    API --> CHAT
+    CHAT --> USER
+```
+
+---
+
+## Request-Response Flow Diagram
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant FastAPI
+    participant Middleware
+    participant Router
+    participant Service
+    participant Repository
+    participant Database
+    
+    User->>Frontend: Submit Query
+    Frontend->>FastAPI: HTTP Request
+    
+    Note over FastAPI,Middleware: Request enters<br/>middleware pipeline
+    
+    Middleware->>Middleware: Add X-Request-ID
+    Middleware->>Middleware: Start timer
+    Middleware->>Router: Pass request
+    
+    Router->>Service: DI: get_service()
+    Service->>Repository: DI: get_repo()
+    Repository->>Database: SQLAlchemy Query
+    
+    Database->>Repository: Return rows
+    Repository->>Service: Return data
+    Service->>Router: Return response
+    
+    Router->>Middleware: Response ready
+    Middleware->>Middleware: Add X-Process-Time
+    Middleware->>Frontend: HTTP Response
+    
+    Frontend->>User: Display Result
+```
+
+---
+
+## Database Schema
+
+### Core Tables
+
+| Table | Description | Records |
+|-------|-------------|---------|
+| `locations` | Healthcare facilities | 8 |
+| `items` | Medical supplies | 30 |
+| `inventory_transactions` | Daily stock movements | 14,400 |
+| `stock_health` | Real-time stock analysis (VIEW) | — |
+
+### Requisition Tables
+
+| Table | Description |
+|-------|-------------|
+| `requisitions` | Stock-out requests |
+| `requisition_items` | Items in each request |
+
+### Schema Diagram
+
+```mermaid
+erDiagram
+    LOCATIONS ||--o{ INVENTORY_TRANSACTIONS : has
+    ITEMS ||--o{ INVENTORY_TRANSACTIONS : tracks
+    LOCATIONS ||--o{ REQUISITIONS : creates
+    ITEMS ||--o{ REQUISITION_ITEMS : requested
+    REQUISITIONS ||--o{ REQUISITION_ITEMS : contains
+
+    LOCATIONS {
+        int id PK
+        string name
+        string type
+        string region
+        text address
+        timestamp created_at
+    }
+
+    ITEMS {
+        int id PK
+        string name
+        string category
+        string unit
+        int lead_time_days
+        int min_stock
+        timestamp created_at
+    }
+
+    INVENTORY_TRANSACTIONS {
+        int id PK
+        int location_id FK
+        int item_id FK
+        date date
+        int opening_stock
+        int received
+        int issued
+        int closing_stock
+        text notes
+        string entered_by
+        timestamp created_at
+    }
+
+    REQUISITIONS {
+        int id PK
+        string requisition_number UK
+        int location_id FK
+        string requested_by
+        string department
+        string urgency
+        string status
+        string approved_by
+        text rejection_reason
+        text notes
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    REQUISITION_ITEMS {
+        int id PK
+        int requisition_id FK
+        int item_id FK
+        int quantity_requested
+        int quantity_approved
+        text notes
+    }
+```
+
+---
 
 ## Features Implemented
 
-### 1. Database & Data Model
+### 1. Database & Data Model ✅
+
 - **3 Core Tables**: Locations (8), Items (30), Inventory Transactions (14,400)
 - **1 Database View**: `stock_health` for real-time stock analysis
 - **Location Types**: Hospitals, Clinics, Rural Clinics across India
 - **Item Categories**: Antibiotics, Painkillers, Vitamins, Diabetes, First Aid
 - **Sample Data**: 60 days of realistic consumption patterns with varying demand profiles
 
-### 2. REST API Endpoints
+### 2. REST API Endpoints ✅
 
 #### Analytics (`/api/analytics`)
 - `GET /heatmap` - Stock health matrix for all locations/items
@@ -108,7 +465,8 @@ smart-invantory-assistant/
 - `GET /history/{conversation_id}` - Conversation history (persisted in SQLite)
 - `DELETE /history/{conversation_id}` - Clear history
 
-### 3. AI Agent Capabilities
+### 3. AI Agent Capabilities ✅
+
 The chatbot (powered by LangGraph + Groq) can:
 - Answer questions about critical stock levels
 - Provide location-specific inventory status
@@ -126,7 +484,8 @@ The chatbot (powered by LangGraph + Groq) can:
 - "What should I order for Delhi?"
 - "How's our paracetamol inventory?"
 
-### 4. Stock Health Algorithm
+### 4. Stock Health Algorithm ✅
+
 - **7-day rolling average** consumption calculation
 - **Days remaining** = Current Stock / Avg Daily Usage
 - **Status thresholds**:
@@ -135,13 +494,14 @@ The chatbot (powered by LangGraph + Groq) can:
   - HEALTHY: > 7 days remaining
 - **Reorder formula**: (Daily Usage × Lead Time × Safety Factor) - Current Stock
 
-### 5. Speech-to-Text (Sarvam AI)
+### 5. Speech-to-Text (Sarvam AI) ✅
+
 - **Voice Input**: Mic button in chat UI records audio via MediaRecorder API
 - **Transcription**: Audio sent to Sarvam AI's `speech-to-text-translate` endpoint (saaras:v3 model)
 - **Auto-translation**: Supports Hindi/regional language input, translates to English
 - **Seamless UX**: Transcribed text fills the input field for review before sending
 
-### 6. Conversational Memory
+### 6. Conversational Memory ✅
 
 #### Short-Term Memory (SQLite)
 - `ChatSession` and `ChatMessage` tables persist every conversation
@@ -160,23 +520,220 @@ The chatbot (powered by LangGraph + Groq) can:
 - Each message carries a timestamp (e.g., `[2026-02-20 00:05]`)
 - Agent resolves relative time ("last month", "yesterday") using date context
 
-### 7. Security & Configuration
-- Environment-based configuration (.env)
-- CORS middleware for frontend integration
-- Input validation with Pydantic models
-- SQL injection protection via SQLAlchemy ORM
-- **Current limitation**: Role separation is UI-level only. Backend API endpoints are not yet protected by JWT/session/role authorization.
-- **Recommended next step**: Implement backend authentication + role-based authorization for secure vendor/admin separation.
+### 7. Stock OUT Requisition Workflow ✅
 
-### 8. Frontend (React + Vite)
+- **Department Staff Portal** (`StaffRequisition.jsx`): Create requisition requests with urgency levels
+- **Manager Approval Panel** (`Requisitions.jsx`): Review, approve, or reject requests
+- **Automatic Stock Deduction**: On approval, inventory transactions are created automatically
+- **Status Tracking**: PENDING → APPROVED/REJECTED/CANCELLED with full audit trail
+- **Dashboard Stats**: Total, pending, approved today, rejected, emergency counts
+
+### 8. Backend Engineering (Modular Monolith) ✅
+
+> **Why Modular Monolith?** This project is a single-team, single-deployment healthcare tool. Microservices would add network complexity, distributed transactions, and deployment overhead with zero benefit at this scale. A modular monolith gives us clean separation (easy to test, easy to extend) while keeping deployment simple. If we ever need to scale a specific module (e.g., the AI agent), we can extract it into a service later — the repository/DI boundaries already make that straightforward.
+
+#### Architecture Layers
+
+```
+[Routes] → [Depends()] → [Services] → [Repositories] → [SQLAlchemy] → [DB]
+   ↑              ↑             ↑              ↑
+ Pydantic     FastAPI DI    Business      Data access
+ validation   factories      logic         queries
+```
+
+#### Completed Modules
+
+| Module | What It Does | Why It Matters |
+|--------|-------------|----------------|
+| **Error Handling** | Custom exception hierarchy (`NotFoundError`, `ValidationError`, etc.) + global handlers | Every error returns consistent JSON `{success, error: {code, message}}`. No stack traces leak to clients. |
+| **Logging** | Structured logging via Python `logging` module. Every request logged with timing + correlation ID | Replaces scattered `print()`. When something breaks in production, you can trace the exact request path via `X-Request-ID`. |
+| **Repository Pattern** | `InventoryRepository` (20 methods), `RequisitionRepository` (15 methods) | Services don't write SQL. If you switch from SQLite to PostgreSQL, only repos change. Makes unit testing trivial (mock the repo). |
+| **Dependency Injection** | FastAPI `Depends()` factories wire repos → services automatically | Routes don't create objects manually. Each request gets its own DB session → repo → service chain. Enables testing with fake dependencies. |
+| **Response Schemas** | `APIResponse`, `PaginatedResponse`, `ErrorResponse` Pydantic models | Every endpoint returns the same shape. Frontend can rely on `response.success` and `response.data` universally. |
+| **Request Middleware** | Logs `method path → status (duration) [request-id]`, adds `X-Request-ID` + `X-Process-Time` headers | You can correlate frontend errors to exact backend requests. Performance monitoring built-in. |
+
+### 9. Security & Configuration ✅ (Partial)
+
+- Environment-based configuration (`.env` + centralized `Settings` class)
+- CORS middleware for frontend integration
+- Input validation with Pydantic models (Field constraints, regex patterns)
+- SQL injection protection via SQLAlchemy ORM
+- LangSmith integration for LLM call tracing
+- **Current limitation**: Role separation is UI-level only. Backend JWT auth is planned for Phase 3.
+
+### 10. Frontend (React + Vite) ✅
+
 - **Vendor Panel**: Data Entry page to add locations, items, and transactions
-- **Admin Panel**: Dashboard + Chatbot pages
+- **Admin Panel**: Dashboard + Chatbot + Requisition approval
+- **Staff Portal**: Requisition request form with history
 - **Chat UI**: Real-time chat with microphone button for voice input
 - Built with React 18, Vite, and Tailwind CSS
+
+---
+
+## Full Module Audit (27 Modules)
+
+### ✅ Core Backend Fundamentals (Modules 1–8)
+
+| # | Module | Status | Evidence in Project |
+|---|--------|--------|-------------------|
+| 1 | **HTTP & Web** | ✅ Done | FastAPI handles HTTP natively. CORS configured in `main.py`. Health check endpoint exists. |
+| 2 | **Routing & Path Ops** | ✅ Done | 4 route groups (`analytics`, `chat`, `inventory`, `requisition`), 20+ endpoints, prefix routing via `APIRouter`. |
+| 3 | **JSON & Serialization** | ✅ Done | All endpoints return JSON. Pydantic `BaseModel` on all request/response bodies. `date` serialization handled. |
+| 4 | **Auth & Authorization** | 🔴 Not Started | No JWT, no User model, no `get_current_user`. Role separation is UI-only. **Critical gap for resume.** |
+| 5 | **Data Validation** | ✅ Done | Pydantic everywhere: `Field(ge=0)`, `min_length`, `max_length`, `pattern` regex on urgency. RequestValidationError handler. |
+| 6 | **Architecture** | ✅ Done | Repository pattern (`inventory_repo.py`, `requisition_repo.py`), DI via `dependencies.py`, layered: routes → services → repos. |
+| 7 | **API Design** | 🟡 Partial | Consistent `{success, data}` shape, health check, `/docs` auto-generated. **Missing:** `response_model` on routes, API versioning, pagination on list endpoints. |
+| 8 | **Databases & ORM** | ✅ Done | SQLAlchemy 2.0, 7 ORM models, `create_all()` auto-migration, `get_db` session factory, joinedload for N+1 prevention. |
+
+### 🟡 Intermediate Backend (Modules 9–14)
+
+| # | Module | Status | Evidence in Project |
+|---|--------|--------|-------------------|
+| 9 | **Caching** | 🔴 Not Started | No `cachetools`, no Redis, no LRU. Every request hits DB fresh. |
+| 10 | **Task Queues** | 🔴 Not Started | No `BackgroundTasks`, no Celery. ChromaDB writes are synchronous (blocks response). |
+| 11 | **Error Handling** | ✅ Done | 8 custom exceptions in `core/exceptions.py`. 3 global handlers in `error_handlers.py`. Zero `HTTPException` remaining. |
+| 12 | **Config Management** | ✅ Done | Centralized `Settings` class in `config.py`, `.env` file, `python-dotenv`, env-based log levels. |
+| 13 | **Logging & Observability** | ✅ Done | Structured logging (`logging_config.py`), request middleware with `X-Request-ID` + `X-Process-Time`, LangSmith integration for LLM tracing. |
+| 14 | **Graceful Shutdown** | 🔴 Not Started | No `lifespan` context manager. No `engine.dispose()`. DB connections leak on Ctrl+C. |
+
+### 🔴 Security & Performance (Modules 15–17)
+
+| # | Module | Status | Evidence in Project |
+|---|--------|--------|-------------------|
+| 15 | **Backend Security** | 🔴 Not Started | No rate limiting, no security headers (`X-Content-Type-Options`, `X-Frame-Options`), CORS allows `*` methods. |
+| 16 | **Scaling A** | 🟡 Partial | Request timing middleware exists (`X-Process-Time`). **Missing:** slow query logging, N+1 detection, DB connection pooling config. |
+| 17 | **Scaling B** | 🔴 Not Started | Dockerfile is a placeholder (`alpine + sleep`). No multi-worker Uvicorn. No Gunicorn. Single-process only. |
+
+### 🔴 Concurrency & Advanced Systems (Module 18)
+
+| # | Module | Status | Evidence in Project |
+|---|--------|--------|-------------------|
+| 18 | **Concurrency** | 🔴 Not Started | All routes are `def` (sync). No `async def`. No connection pooling config. Default SQLite thread mode. |
+
+### 🔴 Testing & Quality (Module 19)
+
+| # | Module | Status | Evidence in Project |
+|---|--------|--------|-------------------|
+| 19 | **Testing** | 🔴 Not Started | Zero test files. No `pytest`, no `TestClient`, no `conftest.py`. No DI overrides for testing. **Big resume gap.** |
+
+### 🔴 Cloud & Real-Time (Modules 20–22)
+
+| # | Module | Status | Evidence in Project |
+|---|--------|--------|-------------------|
+| 20 | **Object Storage (S3)** | 🔴 Not Started | No file uploads to cloud. Audio files processed in-memory only. |
+| 21 | **Real-Time (WebSockets)** | 🔴 Not Started | Chat is request-response only. No WebSocket endpoint. No real-time stock alerts. |
+| 22 | **Webhooks** | 🔴 Not Started | No server-to-server callbacks. No HMAC verification. No idempotency keys. |
+
+### 🔴 Search, Email & Documentation (Modules 23–25)
+
+| # | Module | Status | Evidence in Project |
+|---|--------|--------|-------------------|
+| 23 | **Advanced Search** | 🔴 Not Started | No Elasticsearch. Search is basic SQL `LIKE`. ChromaDB is for AI memory, not user-facing search. |
+| 24 | **Transactional Emails** | 🔴 Not Started | No email service. No SendGrid/SES. No notification on requisition status change. |
+| 25 | **API Documentation** | 🟡 Partial | Swagger UI works at `/docs`, auto-generated from routes. **Missing:** `response_model` on endpoints, explicit examples, ReDoc customization. |
+
+### 🔴 Cloud-Native & DevOps (Modules 26–27)
+
+| # | Module | Status | Evidence in Project |
+|---|--------|--------|-------------------|
+| 26 | **12-Factor App** | 🟡 Partial | Config from env ✅, stateless ✅. **Missing:** proper log streams, dev/prod parity, disposability. |
+| 27 | **DevOps & Docker** | 🔴 Not Started | Dockerfile is placeholder. No multi-stage build. No `docker-compose.yml` services. No CI/CD. |
+
+---
+
+## Score Summary
+
+```
+✅ Done:        10/27 modules (37%)
+🟡 Partial:      3/27 modules (11%)
+🔴 Not Started: 14/27 modules (52%)
+```
+
+---
+
+## Implementation Roadmap
+
+> Phases are ordered by **dependency chain**: each phase builds on the previous one.
+
+```mermaid
+flowchart LR
+    P1["P1 ✅<br/>Error Handling<br/>+ Logging"] --> P2["P2 ✅<br/>Architecture<br/>Refactor"]
+    P2 --> P3["P3 🔴<br/>Auth +<br/>Security"]
+    P3 --> P4["P4 🔴<br/>Testing"]
+    P4 --> P5["P5 🔴<br/>Caching +<br/>Concurrency"]
+    P5 --> P6["P6 🔴<br/>BG Tasks +<br/>Shutdown"]
+    P6 --> P7["P7 🔴<br/>Docker +<br/>Scaling"]
+    P7 --> P8["P8 🔴<br/>Advanced<br/>Modules"]
+```
+
+| Phase | Modules | Status | Time | What You Get |
+|-------|---------|--------|------|-------------|
+| **P1** | 11 + 13 | ✅ Done | — | Custom exceptions, structured logging, request correlation |
+| **P2** | 6 + 7 | ✅ Done | — | Repository pattern, DI, response schemas |
+| **P3** | 4 + 15 | 🔴 Next | ~3-4 hrs | JWT auth, User model, role-based access, rate limiting, security headers |
+| **P4** | 19 | 🔴 Planned | ~2-3 hrs | Pytest suite, TestClient, fixture factories, DI overrides, ≥80% coverage |
+| **P5** | 9 + 18 | 🔴 Planned | ~2-3 hrs | In-memory TTL cache, cache invalidation, connection pooling |
+| **P6** | 10 + 14 | 🔴 Planned | ~2 hrs | BackgroundTasks, lifespan shutdown, resource cleanup |
+| **P7** | 17 + 27 | 🔴 Planned | ~2-3 hrs | Production Dockerfile, docker-compose, multi-worker, Gunicorn |
+| **P8** | 20-26 | 🔴 Optional | ~4-6 hrs | WebSockets, webhooks, emails, S3, 12-factor, advanced search |
+
+---
+
+## 🎯 Resume Priority Guide — Backend Engineer Job Market
+
+### 🔴 MUST-HAVE for Resume (Non-Negotiable)
+
+These will be asked in **every** backend interview. Missing any = immediate red flag:
+
+| Module | Why Interviewers Care | Your Status |
+|--------|----------------------|-------------|
+| **Auth (Module 4)** | "How does your app handle authentication?" is Q1 in every interview. JWT, password hashing, role-based middleware. | 🔴 P3 |
+| **Testing (Module 19)** | "Show me your tests" — no tests = junior signal. Pytest + TestClient + ≥80% coverage. | 🔴 P4 |
+| **Docker (Module 27)** | "Can you containerize this?" — expected baseline. Multi-stage Dockerfile + docker-compose. | 🔴 P7 |
+| **Error Handling (Module 11)** | Custom exceptions, global handlers, no stack trace leaks. | ✅ Done |
+| **Architecture (Module 6)** | Repository pattern, DI, layered architecture proves you think beyond CRUD. | ✅ Done |
+
+### 🟡 STRONG DIFFERENTIATORS (Top 20% of candidates)
+
+Adding even 2-3 of these makes your project stand out:
+
+| Module | Why It Stands Out | Your Status |
+|--------|------------------|-------------|
+| **Caching (Module 9)** | Shows you understand performance at scale | 🔴 P5 |
+| **Background Tasks (Module 10)** | Async processing is expected in production systems | 🔴 P6 |
+| **WebSockets (Module 21)** | Real-time = modern. Live stock alerts via WebSocket is impressive. | 🔴 P8 |
+| **Graceful Shutdown (Module 14)** | Shows production maturity. Most juniors skip this. | 🔴 P6 |
+| **Rate Limiting (Module 15)** | Security awareness. Easy to implement, impressive to mention. | 🔴 P3 |
+
+### 🟢 NICE-TO-HAVE (If Time Permits)
+
+These are bonus points but won't make or break an application:
+
+| Module | Notes |
+|--------|-------|
+| S3 / Object Storage (20) | Only if your project handles file uploads |
+| Webhooks (22) | Impressive but niche |
+| Elasticsearch (23) | Only for search-heavy apps |
+| Transactional Emails (24) | Good but not core backend |
+| 12-Factor App (26) | More of a philosophy checklist than code |
+
+### 📊 Bottom Line
+
+> **To be job-ready as a backend engineer, implement through Phase 7** (P1–P7).
+> That gives you **19/27 modules** covering Auth, Testing, Docker, Caching, Background Tasks, and Scaling.
+>
+> **Minimum viable resume project**: Complete P1 → P2 → P3 → P4 → P7.
+> That's 5 phases ≈ 12-15 hours of work and covers all the non-negotiable items.
+>
+> Your current progress: **P1 + P2 done** (10/27). You need ~3-4 more phases.
+
+---
 
 ## Quickstart
 
 ### Prerequisites
+
 - Python 3.11+
 - Node.js 18+ (for frontend)
 - (Optional) Groq API key for AI features
@@ -218,19 +775,24 @@ npm run dev
 ```
 
 ### Access
+
 - **Frontend**: http://localhost:5173
 - **API Docs**: http://localhost:8000/docs
 - **Health Check**: http://localhost:8000/health
 - **Root**: http://localhost:8000/
 
+---
+
 ## API Usage Examples
 
 ### Get Stock Alerts
+
 ```bash
 curl "http://localhost:8000/api/analytics/alerts?severity=CRITICAL"
 ```
 
 ### Add Transaction
+
 ```bash
 curl -X POST "http://localhost:8000/api/inventory/transaction" \
   -H "Content-Type: application/json" \
@@ -245,6 +807,7 @@ curl -X POST "http://localhost:8000/api/inventory/transaction" \
 ```
 
 ### Chat Query
+
 ```bash
 curl -X POST "http://localhost:8000/api/chat/query" \
   -H "Content-Type: application/json" \
@@ -254,12 +817,16 @@ curl -X POST "http://localhost:8000/api/chat/query" \
   }'
 ```
 
+---
+
 ## Test the AI Agent
 
 ```bash
 cd backend
 python test_agent.py
 ```
+
+---
 
 ## Configuration
 
@@ -268,240 +835,223 @@ python test_agent.py
 | `DATABASE_PATH` | `../database/smart_inventory.db` | SQLite database location |
 | `GROQ_API_KEY` | `None` | Groq API key for AI features |
 | `SARVAM_API_KEY` | `None` | Sarvam AI key for Speech-to-Text |
-| `ENVIRONMENT` | `development` | App environment |
+| `LANGCHAIN_API_KEY` | `None` | LangSmith API key for LLM tracing |
+| `LANGCHAIN_PROJECT` | `smart-inventory-assistant` | LangSmith project name |
+| `ENVIRONMENT` | `development` | App environment (`development` / `production`) |
 | `CORS_ORIGINS` | `http://localhost:3000,...` | Allowed frontend origins |
 | `API_V1_PREFIX` | `/api` | API route prefix |
 
-## Architecture & Workflow Diagram
+---
 
-```mermaid
-flowchart TB
-    subgraph "Frontend Layer [UPCOMING]"
-        UI[React/Web UI]
-        MOBILE[Mobile App]
-        CHAT_UI[Chat Interface]
-    end
+## Upcoming Implementation Details
 
-    subgraph "API Gateway & Load Balancer [UPCOMING]"
-        NGINX[Nginx Reverse Proxy]
-        RATE_LIMIT[Rate Limiter]
-    end
+### Phase 3: Auth + Security (Modules 4, 15)
 
-    subgraph "Backend Services [IMPLEMENTED]"
-        FASTAPI[FastAPI Application]
+#### Authentication (Module 4)
 
-        subgraph "API Routes"
-            ANALYTICS["/api/analytics"]
-            INVENTORY["/api/inventory"]
-            CHAT["/api/chat"]
-        end
+**New Files:**
+- `backend/app/core/security.py` - JWT token utilities
+  - Password hashing using passlib + bcrypt
+  - `create_access_token(user_id, role)` → JWT
+  - `verify_token(token)` → payload
+  - SECRET_KEY from settings
 
-        subgraph "Service Layer"
-            ANALYTICS_SVC[Analytics Service]
-            INV_SVC[Inventory Service]
-            AI_AGENT[AI Agent Service]
-        end
+**Model Addition:**
+- Add `User` model to `backend/app/database/models.py`
+  ```python
+  class User(Base):
+      __tablename__ = "users"
+      id, username, email, hashed_password, role, department, is_active
+      # role: "super_admin" | "store_manager" | "dept_staff" | "vendor"
+  ```
 
-        subgraph "AI Components"
-            LANGGRAPH[LangGraph Workflow]
-            GROQ[Groq LLM API]
-            TOOLS[Database Tools]
-        end
-    end
+**New Routes:**
+- `backend/app/api/routes/auth.py`
+  ```
+  POST /api/auth/register    → create user
+  POST /api/auth/login       → return JWT
+  GET  /api/auth/me          → current user profile
+  ```
 
-    subgraph "Data Layer [IMPLEMENTED + UPCOMING]"
-        SQLITE[(SQLite<br/>Development)]
-        POSTGRES[(PostgreSQL<br/>Production)]
-        REDIS[(Redis Cache<br/>UPCOMING)]
-    end
+**Middleware:**
+- `backend/app/middleware/auth_middleware.py`
+  ```python
+  def get_current_user(token: str = Depends(oauth2_scheme)):
+      # decode JWT → return User
 
-    subgraph "External Services [UPCOMING]"
-        EMAIL[Email Service<br/>SendGrid/AWS SES]
-        SMS[SMS Gateway<br/>Twilio]
-        SUPPLIERS[Supplier APIs]
-    end
+  def require_role(*roles):
+      # dependency that checks user.role in roles
+  ```
 
-    subgraph "CI/CD Pipeline [UPCOMING]"
-        GITHUB[GitHub Repo]
-        ACTIONS[GitHub Actions]
-        DOCKER[Docker Build]
-        TEST[Test Suite]
-        DEPLOY[Auto Deploy]
-    end
+#### Security Hardening (Module 15)
 
-    subgraph "Monitoring & Logging [UPCOMING]"
-        PROMETHEUS[Prometheus Metrics]
-        GRAFANA[Grafana Dashboard]
-        LOGS[Centralized Logging]
-    end
+**Middleware:**
+- `backend/app/middleware/rate_limiter.py`
+  - In-memory rate limiter (no Redis needed yet)
+  - 60 req/min per IP for general endpoints
+  - 10/min for auth endpoints
 
-    %% User Flow
-    UI --> NGINX
-    MOBILE --> NGINX
-    CHAT_UI --> NGINX
-    NGINX --> RATE_LIMIT
-    RATE_LIMIT --> FASTAPI
+**Main.py Modifications:**
+- Tighten CORS: specific origins only, remove `"*"` from methods
+- Add rate limiter middleware
+- Add security headers (X-Content-Type-Options, X-Frame-Options)
 
-    %% API Routing
-    FASTAPI --> ANALYTICS
-    FASTAPI --> INVENTORY
-    FASTAPI --> CHAT
+---
 
-    %% Service Connections
-    ANALYTICS --> ANALYTICS_SVC
-    INVENTORY --> INV_SVC
-    CHAT --> AI_AGENT
+### Phase 4: Testing (Module 19)
 
-    %% AI Agent Flow
-    AI_AGENT --> LANGGRAPH
-    LANGGRAPH --> GROQ
-    LANGGRAPH --> TOOLS
-    TOOLS --> SQLITE
-    AI_AGENT --> CHROMADB[(ChromaDB<br/>Vector Memory)]
-    AI_AGENT --> SARVAM[Sarvam AI<br/>Speech-to-Text]
+**New Files:**
+- `backend/tests/conftest.py` - Pytest fixtures
+  - `db_session` fixture for test database
+  - `client` fixture for TestClient
+  - `override_dependencies` for DI testing
 
-    %% Services to Database
-    ANALYTICS_SVC --> SQLITE
-    INV_SVC --> SQLITE
+- `backend/tests/test_routes/` - Route tests
+  - `test_analytics.py`
+  - `test_inventory.py`
+  - `test_chat.py`
+  - `test_requisition.py`
 
-    %% Database Connections
-    SQLITE -.->|Migration| POSTGRES
+- `backend/tests/test_services/` - Service tests
+  - `test_analytics_service.py`
+  - `test_inventory_service.py`
 
-    %% Cache Layer
-    AI_AGENT -.->|Cache| REDIS
-    ANALYTICS_SVC -.->|Cache| REDIS
+**Test Coverage Target:** ≥80%
 
-    %% Notifications
-    ANALYTICS_SVC -.->|Critical Alerts| EMAIL
-    ANALYTICS_SVC -.->|Urgent Alerts| SMS
-    INV_SVC -.->|Auto-reorder| SUPPLIERS
+---
 
-    %% CI/CD Flow
-    GITHUB --> ACTIONS
-    ACTIONS --> TEST
-    TEST --> DOCKER
-    DOCKER --> DEPLOY
-    DEPLOY --> NGINX
+### Phase 5: Caching + Concurrency (Modules 9, 18)
 
-    %% Monitoring
-    FASTAPI -.->|Metrics| PROMETHEUS
-    PROMETHEUS --> GRAFANA
-    FASTAPI -.->|Logs| LOGS
+#### Caching (Module 9)
 
-    %% Styling
-    classDef implemented fill:#90EE90,stroke:#228B22,stroke-width:2px,color:black
-    classDef upcoming fill:#FFD700,stroke:#FFA500,stroke-width:2px,color:black
-    classDef external fill:#87CEEB,stroke:#4682B4,stroke-width:2px,color:black
-    classDef database fill:#DDA0DD,stroke:#8B008B,stroke-width:2px,color:black
+**New Files:**
+- `backend/app/core/cache.py`
+  ```python
+  from functools import lru_cache
+  from cachetools import TTLCache
 
-    class FASTAPI,ANALYTICS,INVENTORY,CHAT,ANALYTICS_SVC,INV_SVC,AI_AGENT,LANGGRAPH,TOOLS,SQLITE,CHROMADB implemented
-    class UI,MOBILE,CHAT_UI,NGINX,RATE_LIMIT,POSTGRES,REDIS,EMAIL,SMS,SUPPLIERS,ACTIONS,DOCKER,TEST,DEPLOY,PROMETHEUS,GRAFANA,LOGS upcoming
-    class GROQ,GITHUB,SARVAM external
-    class SQLITE,POSTGRES,REDIS,CHROMADB database
+  # Cache analytics stats (TTL: 60s)
+  # Cache location list (TTL: 300s)
+  # Cache item list (TTL: 300s)
+  # Invalidate on write operations
+  ```
+
+**Modifications:**
+- Add cache decorators to `analytics_service.py`
+- Add cache invalidation to `inventory_service.py`
+
+#### Concurrency (Module 18)
+
+**Database Modifications:**
+- Update `backend/app/database/connection.py`
+  ```python
+  engine = create_engine(
+      DATABASE_URL,
+      pool_size=5,
+      max_overflow=10,
+      pool_timeout=30,
+      pool_pre_ping=True,
+  )
+  ```
+
+---
+
+### Phase 6: Background Tasks + Graceful Shutdown (Modules 10, 14)
+
+#### Background Tasks (Module 10)
+
+**New Files:**
+- `backend/app/core/background.py`
+  ```python
+  # Background jobs:
+  # 1. Send notification when requisition created
+  # 2. Generate daily stock report
+  # 3. ChromaDB memory indexing (background)
+  ```
+
+**Modifications:**
+- Update `requisition.py` to queue notifications
+- Update `chat.py` to async ChromaDB writes
+
+#### Graceful Shutdown (Module 14)
+
+**Main.py Modifications:**
+- Add lifespan context manager
+  ```python
+  from contextlib import asynccontextmanager
+
+  @asynccontextmanager
+  async def lifespan(app: FastAPI):
+      # STARTUP
+      logger.info("Starting Smart Inventory Assistant...")
+      setup_logging(settings.ENVIRONMENT)
+      Base.metadata.create_all(bind=engine)
+      yield
+      # SHUTDOWN
+      logger.info("Shutting down...")
+      engine.dispose()
+      # close ChromaDB client
+      # flush pending background tasks
+  ```
+
+---
+
+### Phase 7: Docker + Scaling (Modules 17, 27)
+
+#### Dockerfile Improvements
+
+**New Dockerfile:**
+```dockerfile
+FROM python:3.11-slim AS base
+# Install dependencies
+# ...
+
+# Multi-stage build for production
+FROM base AS production
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
 ```
 
-### Data Flow Description
+#### Docker Compose
 
-#### Current Implementation (Green)
-1. **FastAPI Backend** - Core application with 3 API route groups
-2. **React Frontend** - Dashboard, Chatbot with voice input, Data Entry
-3. **Analytics Service** - Heatmap, alerts, and summary calculations
-4. **Inventory Service** - Transaction management and stock tracking
-5. **AI Agent** - LangGraph-based conversational interface with Groq LLM
-6. **Speech-to-Text** - Sarvam AI integration for voice queries
-7. **SQLite Database** - Inventory data + persistent chat sessions
-8. **ChromaDB** - Vector database for semantic long-term memory
-
-#### Upcoming Pipeline (Yellow)
-1. **API Gateway** - Nginx reverse proxy with rate limiting
-2. **Production Database** - PostgreSQL migration from SQLite
-3. **Caching** - Redis for query optimization and session storage
-4. **Notifications** - Email/SMS alerts for critical stock levels
-5. **CI/CD** - GitHub Actions for automated testing and deployment
-6. **Monitoring** - Prometheus + Grafana for metrics and alerting
-
-### Request Flow Example
-
-```
-User Query: "What should I order for Mumbai?" (text or voice 🎤)
-    ↓
-React Frontend (Chatbot.jsx)
-    ↓ (voice → Sarvam AI STT → text)
-FastAPI /api/chat/query
-    ↓
-AI Agent Service
-    ├─→ ChromaDB Search (recall past conversations)
-    ├─→ SQLite Fetch (load current thread history)
-    ↓
-LangGraph Workflow
-    ├─→ System Prompt [date + past context + history]
-    ├─→ Groq LLM (understand intent)
-    └─→ Database Tools (fetch inventory data)
-            ↓
-        SQLite Query
-            ↓
-    Response Generation
-            ↓
-    Save to SQLite + ChromaDB
-            ↓
-    JSON Response → React UI
+**New docker-compose.yml:**
+```yaml
+services:
+  backend:
+    build: ./backend
+    ports: ["8000:8000"]
+    environment: [...]
+    deploy:
+      replicas: 2
+  frontend:
+    build: ./frontend/smart-inventory-web
+    ports: ["5173:80"]
 ```
 
-## Upcoming Features
+#### Gunicorn Configuration
 
-| Feature | Status | Priority | ETA |
-|---------|--------|----------|-----|
-| **Frontend UI** | ✅ Done | High | — |
-| **Speech-to-Text** | ✅ Done | High | — |
-| **Conversational Memory** | ✅ Done | High | — |
-| **PostgreSQL Migration** | 🟡 In Planning | Medium | March 2026 |
-| **CI/CD Pipeline** | 🟡 In Planning | Medium | April 2026 |
-| **User Authentication** | 🔴 Not Started | Medium | April 2026 |
-| **Redis Caching** | 🔴 Not Started | Low | May 2026 |
-| **Email/SMS Alerts** | 🔴 Not Started | Low | May 2026 |
-| **Advanced Forecasting** | 🔴 Not Started | Low | June 2026 |
+**New File:**
+- `backend/gunicorn.conf.py`
+  ```python
+  workers = 4
+  worker_class = "uvicorn.workers.UvicornWorker"
+  bind = "0.0.0.0:8000"
+  timeout = 120
+  ```
 
-- **Full CI/CD Pipeline**: GitHub Actions → Docker build → Automated tests → Deploy to cloud (AWS/GCP)
-- **User Authentication**: JWT-based auth with role-based access control (admin, staff, viewer)
-- **Advanced Analytics**: ML-based consumption forecasting using historical trends
-- **Multi-database Support**: PostgreSQL for production with automated SQLite migration
-- **Real-time Notifications**: WebSocket-based alerts + Email/SMS for critical stock levels
-- **Supplier Integration**: API connections to automatically place orders when stock is low
+---
 
-## Database Schema
+### Phase 8: Advanced Modules (20-26)
 
-### Locations Table
-| Field | Type | Description |
-|-------|------|-------------|
-| id | INTEGER | Primary key |
-| name | VARCHAR(200) | Location name |
-| type | VARCHAR(50) | hospital/clinic/rural_clinic |
-| region | VARCHAR(100) | Geographic region |
-| address | TEXT | Full address |
+| Module | Description | Implementation |
+|--------|-------------|----------------|
+| 20 | Object Storage (S3) | File upload handling for audio files |
+| 21 | Real-Time (WebSockets) | Live stock alerts, chat updates |
+| 22 | Webhooks | Server-to-server callbacks |
+| 23 | Advanced Search | Elasticsearch integration |
+| 24 | Transactional Emails | SendGrid/SES integration |
+| 26 | 12-Factor App | Log streams, dev/prod parity |
 
-### Items Table
-| Field | Type | Description |
-|-------|------|-------------|
-| id | INTEGER | Primary key |
-| name | VARCHAR(200) | Medicine/supply name |
-| category | VARCHAR(100) | Item category |
-| unit | VARCHAR(50) | Unit of measurement |
-| lead_time_days | INTEGER | Supplier lead time |
-| min_stock | INTEGER | Minimum stock threshold |
-
-### Inventory Transactions Table
-| Field | Type | Description |
-|-------|------|-------------|
-| id | INTEGER | Primary key |
-| location_id | INTEGER | FK to locations |
-| item_id | INTEGER | FK to items |
-| date | DATE | Transaction date |
-| opening_stock | INTEGER | Stock at start of day |
-| received | INTEGER | Quantity received |
-| issued | INTEGER | Quantity issued/used |
-| closing_stock | INTEGER | Stock at end of day |
-| notes | TEXT | Optional notes |
-| entered_by | VARCHAR(100) | User who entered |
+---
 
 ## Notes
 
@@ -515,9 +1065,13 @@ LangGraph Workflow
 - Vendor/Admin separation is currently enforced at UI level only; backend API role authorization is pending.
 - Location profiles: High/Medium/Low volume × Good/Medium/Poor efficiency
 
+---
+
 ## License
 
 MIT
+
+---
 
 ## Contributing
 
@@ -525,5 +1079,4 @@ This is a personal project. Feel free to fork and extend!
 
 ---
 
-**Last Updated**: February 2026 | **Version**: 2.0.0
-
+**Last Updated**: March 2026 | **Version**: 2.2.0 | **Architecture**: Modular Monolith | **Module Progress**: 10/27 (37%)
