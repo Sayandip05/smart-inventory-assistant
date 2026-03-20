@@ -23,12 +23,10 @@ logger = logging.getLogger("smart_inventory.request")
 
 
 class RequestLoggerMiddleware(BaseHTTPMiddleware):
-
     async def dispatch(self, request: Request, call_next) -> Response:
         request_id = str(uuid.uuid4())[:8]
         start_time = time.time()
 
-        # Attach request ID so downstream code can use it
         request.state.request_id = request_id
 
         response: Response = await call_next(request)
@@ -38,7 +36,6 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
         method = request.method
         path = request.url.path
 
-        # Skip noisy health-check / favicon / docs requests
         if path in ("/health", "/favicon.ico", "/docs", "/openapi.json", "/redoc"):
             response.headers["X-Request-ID"] = request_id
             return response
@@ -53,7 +50,6 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
             request_id,
         )
 
-        # Add headers for debugging
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Process-Time"] = f"{duration_ms}ms"
 

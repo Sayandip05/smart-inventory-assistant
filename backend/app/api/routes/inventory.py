@@ -6,68 +6,30 @@ No direct DB queries here — everything goes through the service layer.
 """
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
-from typing import List, Optional
-from datetime import date
 
 from app.core.dependencies import get_inventory_service, get_inventory_repo
-from app.core.exceptions import NotFoundError, DuplicateError, ValidationError, AppException
-from app.services.inventory_service import InventoryService
-from app.repositories.inventory_repo import InventoryRepository
+from app.core.exceptions import (
+    NotFoundError,
+    DuplicateError,
+    ValidationError,
+    AppException,
+)
+from app.application.inventory_service import InventoryService
+from app.infrastructure.database.inventory_repo import InventoryRepository
+from app.api.schemas.inventory_schemas import (
+    TransactionItem,
+    SingleTransactionRequest,
+    BulkTransactionRequest,
+    CreateLocationRequest,
+    CreateItemRequest,
+    ResetDataRequest,
+)
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
 
 
-# ─── Request models ───
-
-class TransactionItem(BaseModel):
-    item_id: int
-    received: int = Field(ge=0, description="Quantity received (must be >= 0)")
-    issued: int = Field(ge=0, description="Quantity issued/used (must be >= 0)")
-    notes: Optional[str] = None
-
-
-class SingleTransactionRequest(BaseModel):
-    location_id: int
-    item_id: int
-    date: date
-    received: int = Field(ge=0)
-    issued: int = Field(ge=0)
-    notes: Optional[str] = None
-    entered_by: Optional[str] = "staff"
-
-
-class BulkTransactionRequest(BaseModel):
-    location_id: int
-    date: date
-    items: List[TransactionItem]
-    entered_by: Optional[str] = "staff"
-
-
-class CreateLocationRequest(BaseModel):
-    name: str = Field(min_length=2, max_length=200)
-    type: str = Field(min_length=2, max_length=50)
-    region: str = Field(min_length=2, max_length=100)
-    address: Optional[str] = None
-
-
-class CreateItemRequest(BaseModel):
-    name: str = Field(min_length=2, max_length=200)
-    category: str = Field(min_length=2, max_length=100)
-    unit: str = Field(min_length=1, max_length=50)
-    lead_time_days: int = Field(ge=1, le=365)
-    min_stock: int = Field(ge=0)
-
-
-class ResetDataRequest(BaseModel):
-    confirm: bool = False
-
-
-# ─── GET endpoints ───
-
 @router.get("/locations")
 def get_all_locations(repo: InventoryRepository = Depends(get_inventory_repo)):
-    """Get list of all locations."""
     locations = repo.get_all_locations()
     return {
         "success": True,
@@ -80,12 +42,16 @@ def get_all_locations(repo: InventoryRepository = Depends(get_inventory_repo)):
 
 @router.get("/items")
 def get_all_items(repo: InventoryRepository = Depends(get_inventory_repo)):
-    """Get list of all items."""
     items = repo.get_all_items()
     return {
         "success": True,
         "data": [
-            {"id": item.id, "name": item.name, "category": item.category, "unit": item.unit}
+            {
+                "id": item.id,
+                "name": item.name,
+                "category": item.category,
+                "unit": item.unit,
+            }
             for item in items
         ],
     }
@@ -97,7 +63,6 @@ def get_location_items(
     repo: InventoryRepository = Depends(get_inventory_repo),
     service: InventoryService = Depends(get_inventory_service),
 ):
-    """Get all items for a specific location with current stock levels."""
     location = repo.get_location_by_id(location_id)
     if not location:
         raise NotFoundError("Location", location_id)
@@ -116,23 +81,23 @@ def get_current_stock(
     item_id: int,
     service: InventoryService = Depends(get_inventory_service),
 ):
-    """Get current stock level for a specific item at a location."""
     stock = service.get_latest_stock(location_id, item_id)
 
     if stock is None:
-        return {"success": True, "message": "No transaction history found", "current_stock": 0}
+        return {
+            "success": True,
+            "message": "No transaction history found",
+            "current_stock": 0,
+        }
 
     return {"success": True, "current_stock": stock}
 
-
-# ─── POST endpoints ───
 
 @router.post("/locations")
 def create_location(
     request: CreateLocationRequest,
     repo: InventoryRepository = Depends(get_inventory_repo),
 ):
-    """Create a new location from user input."""
     existing = repo.get_location_by_name(request.name.strip())
     if existing:
         raise DuplicateError(f"Location '{request.name}' already exists")
@@ -162,7 +127,6 @@ def create_item(
     request: CreateItemRequest,
     repo: InventoryRepository = Depends(get_inventory_repo),
 ):
-    """Create a new item from user input."""
     existing = repo.get_item_by_name(request.name.strip())
     if existing:
         raise DuplicateError(f"Item '{request.name}' already exists")
@@ -194,7 +158,6 @@ def reset_inventory_data(
     request: ResetDataRequest,
     repo: InventoryRepository = Depends(get_inventory_repo),
 ):
-    """Remove all existing data so inventory can be re-entered manually."""
     if not request.confirm:
         raise ValidationError("Set confirm=true to reset data")
 
@@ -224,7 +187,6 @@ def add_single_transaction(
     repo: InventoryRepository = Depends(get_inventory_repo),
     service: InventoryService = Depends(get_inventory_service),
 ):
-    """Add a single inventory transaction."""
     if not repo.get_location_by_id(request.location_id):
         raise NotFoundError("Location", request.location_id)
     if not repo.get_item_by_id(request.item_id):
@@ -237,7 +199,7 @@ def add_single_transaction(
         received=request.received,
         issued=request.issued,
         notes=request.notes,
-        entered_by=request.entered_by,
+        entered_by=request.entered_by or "staff",
     )
 
     if not result["success"]:
@@ -252,7 +214,6 @@ def add_bulk_transactions(
     repo: InventoryRepository = Depends(get_inventory_repo),
     service: InventoryService = Depends(get_inventory_service),
 ):
-    """Add multiple inventory transactions at once (daily batch entry)."""
     if not repo.get_location_by_id(request.location_id):
         raise NotFoundError("Location", request.location_id)
 
@@ -270,5 +231,5 @@ def add_bulk_transactions(
         location_id=request.location_id,
         transaction_date=request.date,
         items_data=items_data,
-        entered_by=request.entered_by,
+        entered_by=request.entered_by or "staff",
     )

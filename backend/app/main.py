@@ -3,27 +3,23 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import analytics, chat, inventory, requisition
-from app.config import settings
-from app.database.connection import Base, engine
+from app.core.config import settings
+from app.infrastructure.database.connection import Base, engine
 from app.core.logging_config import setup_logging
 from app.core.error_handlers import register_exception_handlers
-from app.middleware.request_logger import RequestLoggerMiddleware
+from app.core.middleware.request_logger import RequestLoggerMiddleware
 
-# ─── Initialise logging FIRST ───
 setup_logging(settings.ENVIRONMENT)
 logger = logging.getLogger("smart_inventory")
 
-# ─── Create app ───
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description="AI-powered inventory management for healthcare supply chains",
 )
 
-# Ensure core tables exist even when starting with an empty database.
 Base.metadata.create_all(bind=engine)
 
-# ─── Middleware (order matters: outermost first) ───
 app.add_middleware(RequestLoggerMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -33,10 +29,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ─── Global error handlers ───
 register_exception_handlers(app)
 
-# ─── Routes ───
 app.include_router(analytics.router, prefix=settings.API_V1_PREFIX)
 app.include_router(chat.router, prefix=settings.API_V1_PREFIX)
 app.include_router(inventory.router, prefix=settings.API_V1_PREFIX)
