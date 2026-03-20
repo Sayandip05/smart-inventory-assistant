@@ -10,22 +10,18 @@ import logging
 from datetime import datetime, date
 from typing import Dict, Any, Optional, List
 
-from app.repositories.requisition_repo import RequisitionRepository
-from app.repositories.inventory_repo import InventoryRepository
+from app.infrastructure.database.requisition_repo import RequisitionRepository
+from app.infrastructure.database.inventory_repo import InventoryRepository
 
 logger = logging.getLogger("smart_inventory.service.requisition")
 
 
 class RequisitionService:
-
     def __init__(self, repo: RequisitionRepository, inv_repo: InventoryRepository):
         self.repo = repo
         self.inv_repo = inv_repo
 
-    # ── Helpers ──
-
     def _generate_requisition_number(self) -> str:
-        """Generate auto-incrementing requisition number: REQ-YYYYMMDD-NNN."""
         today = datetime.now().strftime("%Y%m%d")
         prefix = f"REQ-{today}-"
         count = self.repo.count_by_prefix(prefix)
@@ -33,7 +29,6 @@ class RequisitionService:
 
     @staticmethod
     def _format_requisition(req) -> dict:
-        """Format a requisition ORM object into a JSON-serializable dict."""
         result = {
             "id": req.id,
             "requisition_number": req.requisition_number,
@@ -67,8 +62,6 @@ class RequisitionService:
 
         return result
 
-    # ── Core operations ──
-
     def create_requisition(
         self,
         location_id: int,
@@ -78,9 +71,7 @@ class RequisitionService:
         items: List[dict],
         notes: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Create a new stock-out requisition with line items."""
         try:
-            # Validate location
             location = self.repo.get_location(location_id)
             if not location:
                 return {"success": False, "error": "Location not found"}
@@ -88,7 +79,6 @@ class RequisitionService:
             if urgency not in ("LOW", "NORMAL", "HIGH", "EMERGENCY"):
                 return {"success": False, "error": "Invalid urgency level"}
 
-            # Validate items exist
             for item_data in items:
                 item = self.repo.get_item(item_data["item_id"])
                 if not item:
@@ -141,12 +131,10 @@ class RequisitionService:
         location_id: Optional[int] = None,
         requested_by: Optional[str] = None,
     ) -> List[dict]:
-        """List requisitions with optional filters."""
         requisitions = self.repo.list_all(status, location_id, requested_by)
         return [self._format_requisition(r) for r in requisitions]
 
     def get_requisition(self, requisition_id: int) -> Optional[dict]:
-        """Get a single requisition with full details."""
         requisition = self.repo.get_with_full_details(requisition_id)
         if not requisition:
             return None
@@ -158,7 +146,6 @@ class RequisitionService:
         approved_by: str,
         item_adjustments: Optional[List[dict]] = None,
     ) -> Dict[str, Any]:
-        """Approve a requisition and auto-deduct stock."""
         try:
             requisition = self.repo.get_by_id(requisition_id, load_items=True)
 
@@ -171,13 +158,11 @@ class RequisitionService:
                     "error": f"Cannot approve: requisition is already {requisition.status}",
                 }
 
-            # Build adjustment map
             adjustment_map = {}
             if item_adjustments:
                 for adj in item_adjustments:
                     adjustment_map[adj["item_id"]] = adj["quantity_approved"]
 
-            # Check stock availability and set approved quantities
             stock_errors = []
             for req_item in requisition.items:
                 approved_qty = adjustment_map.get(
@@ -202,8 +187,7 @@ class RequisitionService:
                     "error": "Insufficient stock: " + "; ".join(stock_errors),
                 }
 
-            # Deduct stock via inventory repo
-            from app.services.inventory_service import InventoryService
+            from app.application.inventory_service import InventoryService
 
             inv_service = InventoryService(self.inv_repo)
             today = date.today()
@@ -248,7 +232,6 @@ class RequisitionService:
     def reject_requisition(
         self, requisition_id: int, rejected_by: str, reason: str
     ) -> Dict[str, Any]:
-        """Reject a requisition with a reason."""
         try:
             requisition = self.repo.get_by_id(requisition_id)
 
@@ -283,7 +266,6 @@ class RequisitionService:
     def cancel_requisition(
         self, requisition_id: int, cancelled_by: str
     ) -> Dict[str, Any]:
-        """Cancel a pending requisition (only by the requester)."""
         try:
             requisition = self.repo.get_by_id(requisition_id)
 
@@ -309,7 +291,6 @@ class RequisitionService:
             return {"success": False, "error": str(e)}
 
     def get_stats(self) -> dict:
-        """Get summary statistics for the requisition dashboard."""
         return {
             "total": self.repo.count_total(),
             "pending": self.repo.count_by_status("PENDING"),

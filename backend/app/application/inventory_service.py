@@ -9,14 +9,13 @@ import logging
 from datetime import date
 from typing import Dict, Any, Optional
 
-from app.repositories.inventory_repo import InventoryRepository
+from app.infrastructure.database.inventory_repo import InventoryRepository
 from app.core.exceptions import InsufficientStockError
 
 logger = logging.getLogger("smart_inventory.service.inventory")
 
 
 class InventoryService:
-
     def __init__(self, repo: InventoryRepository):
         self.repo = repo
 
@@ -30,13 +29,7 @@ class InventoryService:
         notes: Optional[str] = None,
         entered_by: str = "staff",
     ) -> Dict[str, Any]:
-        """
-        Add a new inventory transaction.
-
-        Automatically calculates opening_stock and closing_stock.
-        """
         try:
-            # Get previous day's closing stock as opening stock
             previous = self.repo.get_previous_transaction(
                 location_id, item_id, transaction_date
             )
@@ -91,7 +84,6 @@ class InventoryService:
         items_data: list,
         entered_by: str = "staff",
     ) -> Dict[str, Any]:
-        """Add multiple transactions at once (for daily batch entry)."""
         try:
             results = []
             errors = []
@@ -125,12 +117,10 @@ class InventoryService:
             return {"success": False, "error": str(e)}
 
     def get_latest_stock(self, location_id: int, item_id: int) -> Optional[int]:
-        """Get most recent closing stock for an item at a location."""
         latest = self.repo.get_latest_transaction(location_id, item_id)
         return latest.closing_stock if latest else None
 
     def get_location_items(self, location_id: int) -> list:
-        """Get all items for a location with their current stock and status."""
         items = self.repo.get_all_items()
 
         result = []
@@ -158,12 +148,9 @@ class InventoryService:
 
         return result
 
-    # ── Keep backward-compatible static methods for code that hasn't migrated yet ──
-
     @staticmethod
     def add_transaction_static(db, **kwargs) -> Dict[str, Any]:
-        """Legacy static method — used by RequisitionService until it's fully migrated."""
-        from app.repositories.inventory_repo import InventoryRepository
+        from app.infrastructure.database.inventory_repo import InventoryRepository
 
         repo = InventoryRepository(db)
         svc = InventoryService(repo)
@@ -171,8 +158,7 @@ class InventoryService:
 
     @staticmethod
     def get_latest_stock_static(db, location_id: int, item_id: int) -> Optional[int]:
-        """Legacy static method."""
-        from app.repositories.inventory_repo import InventoryRepository
+        from app.infrastructure.database.inventory_repo import InventoryRepository
 
         repo = InventoryRepository(db)
         svc = InventoryService(repo)

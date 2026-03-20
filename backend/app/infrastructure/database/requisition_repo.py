@@ -1,16 +1,15 @@
-"""
-Requisition repository — data access layer.
-
-All raw database queries for requisitions and requisition items live here.
-"""
-
 import logging
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, desc
 from datetime import date
 from typing import Optional, List
 
-from app.database.models import Requisition, RequisitionItem, Item, Location
+from app.infrastructure.database.models import (
+    Requisition,
+    RequisitionItem,
+    Item,
+    Location,
+)
 
 logger = logging.getLogger("smart_inventory.repo.requisition")
 
@@ -83,8 +82,6 @@ class RequisitionRepository:
 
     def get_item(self, item_id: int) -> Optional[Item]:
         return self.db.query(Item).filter(Item.id == item_id).first()
-
-    # ── Stats queries ──
 
     def count_total(self) -> int:
         return self.db.query(Requisition).count()

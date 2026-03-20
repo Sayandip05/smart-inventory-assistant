@@ -56,5 +56,4 @@ Use the above past context to inform your answer when relevant, but always cross
     return prompt
 
 
-# Keep backward-compatible constant for any other imports
 SYSTEM_PROMPT = get_system_prompt()

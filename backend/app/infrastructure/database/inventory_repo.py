@@ -1,17 +1,10 @@
-"""
-Inventory repository — data access layer.
-
-All raw database queries for locations, items, and transactions live here.
-Services call the repository; the repository talks to SQLAlchemy.
-"""
-
 import logging
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import date
 from typing import Optional, List
 
-from app.database.models import Location, Item, InventoryTransaction
+from app.infrastructure.database.models import Location, Item, InventoryTransaction
 
 logger = logging.getLogger("smart_inventory.repo.inventory")
 
@@ -21,8 +14,6 @@ class InventoryRepository:
 
     def __init__(self, db: Session):
         self.db = db
-
-    # ── Locations ──
 
     def get_all_locations(self) -> List[Location]:
         return self.db.query(Location).all()
@@ -40,8 +31,6 @@ class InventoryRepository:
         self.db.refresh(location)
         return location
 
-    # ── Items ──
-
     def get_all_items(self) -> List[Item]:
         return self.db.query(Item).all()
 
@@ -58,12 +47,9 @@ class InventoryRepository:
         self.db.refresh(item)
         return item
 
-    # ── Transactions ──
-
     def get_previous_transaction(
         self, location_id: int, item_id: int, before_date: date
     ) -> Optional[InventoryTransaction]:
-        """Get the most recent transaction before a given date."""
         return (
             self.db.query(InventoryTransaction)
             .filter(
@@ -78,7 +64,6 @@ class InventoryRepository:
     def get_latest_transaction(
         self, location_id: int, item_id: int
     ) -> Optional[InventoryTransaction]:
-        """Get the most recent transaction for a location/item pair."""
         return (
             self.db.query(InventoryTransaction)
             .filter(
@@ -95,8 +80,6 @@ class InventoryRepository:
         self.db.commit()
         self.db.refresh(tx)
         return tx
-
-    # ── Bulk / Reset ──
 
     def count_transactions(self) -> int:
         return self.db.query(InventoryTransaction).count()
