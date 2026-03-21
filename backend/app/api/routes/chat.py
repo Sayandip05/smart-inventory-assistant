@@ -1,12 +1,14 @@
-from fastapi import (
-    APIRouter,
-    Depends,
-    UploadFile,
-    File,
-    HTTPException as HTTPExceptionImport,
+from fastapi import APIRouter, Depends, UploadFile, File
+from app.core.exceptions import (
+    ValidationError,
+    AppException,
+    NotFoundError,
+    DatabaseError,
 )
-from app.core.exceptions import ValidationError, AppException
+from app.core.dependencies import get_current_user
+from app.infrastructure.database.models import User
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from typing import Optional
 from app.infrastructure.database.connection import get_db
 from app.infrastructure.database.models import ChatSession, ChatMessage
@@ -121,11 +123,15 @@ def _format_result(title: str, payload, question: str) -> dict:
 
 
 @router.post("/query", response_model=ChatResponse)
-def chat_query(request: ChatRequest, db: Session = Depends(get_db)):
-    try:
-        if not request.question or len(request.question.strip()) < 3:
-            raise ValidationError("Question must be at least 3 characters")
+def chat_query(
+    request: ChatRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not request.question or len(request.question.strip()) < 3:
+        raise ValidationError("Question must be at least 3 characters")
 
+    try:
         result = _build_agent_response(
             request.question, db, request.conversation_id or ""
         )
@@ -138,7 +144,7 @@ def chat_query(request: ChatRequest, db: Session = Depends(get_db)):
                 if len(request.question) > 50
                 else request.question
             )
-            session = ChatSession(id=conv_id, user_id=request.user_id, title=title)
+            session = ChatSession(id=conv_id, user_id=str(current_user.id), title=title)
             db.add(session)
 
         db.add(ChatMessage(session_id=conv_id, role="user", content=request.question))
@@ -181,23 +187,27 @@ def chat_query(request: ChatRequest, db: Session = Depends(get_db)):
             suggested_actions=suggested_actions if suggested_actions else None,
         )
 
-    except HTTPExceptionImport:
+    except (ValidationError, AppException):
         raise
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error("Database error in chat_query: %s", str(e))
+        raise DatabaseError(f"Failed to save chat message: {str(e)}")
     except Exception as e:
         db.rollback()
-        return ChatResponse(
-            success=False,
-            response="An unexpected error occurred. Please try again.",
-            question=request.question,
-            error=str(e),
-        )
+        logger.error("Unexpected error in chat_query: %s", str(e))
+        raise AppException(f"An unexpected error occurred: {str(e)}")
 
 
 @router.get("/history/{conversation_id}")
-def get_chat_history(conversation_id: str, db: Session = Depends(get_db)):
+def get_chat_history(
+    conversation_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     session = db.query(ChatSession).filter(ChatSession.id == conversation_id).first()
     if not session:
-        return {"success": False, "error": "Conversation not found"}
+        raise NotFoundError("Conversation", conversation_id)
 
     messages = [{"role": msg.role, "content": msg.content} for msg in session.messages]
 
@@ -205,18 +215,24 @@ def get_chat_history(conversation_id: str, db: Session = Depends(get_db)):
 
 
 @router.delete("/history/{conversation_id}")
-def clear_chat_history(conversation_id: str, db: Session = Depends(get_db)):
+def clear_chat_history(
+    conversation_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     session = db.query(ChatSession).filter(ChatSession.id == conversation_id).first()
-    if session:
-        db.delete(session)
-        db.commit()
-        return {"success": True, "message": "Conversation history cleared"}
+    if not session:
+        raise NotFoundError("Conversation", conversation_id)
 
-    return {"success": False, "error": "Conversation not found"}
+    db.delete(session)
+    db.commit()
+    return {"success": True, "message": "Conversation history cleared"}
 
 
 @router.get("/suggestions")
-def get_question_suggestions():
+def get_question_suggestions(
+    current_user: User = Depends(get_current_user),
+):
     return {
         "success": True,
         "suggestions": [
@@ -265,7 +281,10 @@ def get_question_suggestions():
 
 
 @router.get("/sessions")
-def get_chat_sessions(db: Session = Depends(get_db)):
+def get_chat_sessions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     db_sessions = db.query(ChatSession).order_by(ChatSession.updated_at.desc()).all()
 
     sessions = []
@@ -280,7 +299,10 @@ def get_chat_sessions(db: Session = Depends(get_db)):
 
 
 @router.post("/transcribe")
-async def transcribe_audio(file: UploadFile = File(...)):
+async def transcribe_audio(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
     if not settings.SARVAM_API_KEY:
         raise AppException(
             "SARVAM_API_KEY is not configured. Add it to your .env file."
