@@ -15,7 +15,7 @@
 | 1 | **HTTP & Web** | ✅ Done | FastAPI handles HTTP natively. CORS configured in `main.py`. Health check endpoint exists. |
 | 2 | **Routing & Path Ops** | ✅ Done | 4 route groups (`analytics`, `chat`, `inventory`, `requisition`), 20+ endpoints, prefix routing via `APIRouter`. |
 | 3 | **JSON & Serialization** | ✅ Done | All endpoints return JSON. Pydantic `BaseModel` on all request/response bodies. `date` serialization handled. |
-| 4 | **Auth & Authorization** | 🔴 Not Started | No JWT, no User model, no `get_current_user`. Role separation is UI-only. **Critical gap for resume.** |
+| 4 | **Auth & Authorization** | ✅ Done | JWT auth implemented with `python-jose`, password hashing with `passlib`, User model with roles (admin, manager, staff, viewer), `get_current_user` dependency, role-based access via `require_role`, `require_admin`, `require_manager`, `require_staff` decorators. |
 | 5 | **Data Validation** | ✅ Done | Pydantic everywhere: `Field(ge=0)`, `min_length`, `max_length`, `pattern` regex on urgency. RequestValidationError handler. |
 | 6 | **Architecture** | ✅ Done | Repository pattern (`inventory_repo.py`, `requisition_repo.py`), DI via `dependencies.py`, layered: routes → services → repos. |
 | 7 | **API Design** | ✅ Partial | Consistent `{success, data}` shape, health check, `/docs` auto-generated. **Missing:** `response_model` on routes, API versioning, pagination on list endpoints. |
@@ -80,9 +80,9 @@
 ## Score Summary
 
 ```
-✅ Done:        10/27 modules (37%)
+✅ Done:        11/27 modules (41%)
 🟡 Partial:      3/27 modules (11%)
-🔴 Not Started: 14/27 modules (52%)
+🔴 Not Started: 13/27 modules (48%)
 ```
 
 ---
@@ -94,7 +94,8 @@
 ```mermaid
 flowchart LR
     P1["P1 ✅\nError Handling\n+ Logging"] --> P2["P2 ✅\nArchitecture\nRefactor"]
-    P2 --> P3["P3 🔴\nAuth +\nSecurity"]
+    P2 --> P3["P3 ✅\nAuth"]
+    P3 --> P4["P4 🔴\nTesting"]
     P3 --> P4["P4 🔴\nTesting"]
     P4 --> P5["P5 🔴\nCaching +\nConcurrency"]
     P5 --> P6["P6 🔴\nBG Tasks +\nShutdown"]
@@ -106,11 +107,11 @@ flowchart LR
 |-------|---------|--------|------|-------------|
 | **P1** | 11 + 13 | ✅ Done | — | Custom exceptions, structured logging, request correlation |
 | **P2** | 6 + 7 | ✅ Done | — | Repository pattern, DI, response schemas |
-| **P3** | 4 + 15 | 🔴 Next | ~3-4 hrs | JWT auth, User model, role-based access, rate limiting, security headers |
-| **P4** | 19 | 🔴 Planned | ~2-3 hrs | Pytest suite, TestClient, fixture factories, DI overrides, ≥80% coverage |
+| **P3** | 4 | ✅ Done | ~3-4 hrs | JWT auth, User model, role-based access, auth routes |
+| **P4** | 19 | 🔴 Next | ~2-3 hrs | Pytest suite, TestClient, fixture factories, DI overrides, ≥80% coverage |
 | **P5** | 9 + 18 | 🔴 Planned | ~2-3 hrs | In-memory TTL cache, cache invalidation, connection pooling |
 | **P6** | 10 + 14 | 🔴 Planned | ~2 hrs | BackgroundTasks, lifespan shutdown, resource cleanup |
-| **P7** | 17 + 27 | 🔴 Planned | ~2-3 hrs | Production Dockerfile, docker-compose, multi-worker, Gunicorn |
+| **P7** | 15 + 17 + 27 | 🔴 Planned | ~2-3 hrs | Rate limiting, security headers, Production Dockerfile, docker-compose, multi-worker, Gunicorn |
 | **P8** | 20-26 | 🔴 Optional | ~4-6 hrs | WebSockets, webhooks, emails, S3, 12-factor, advanced search |
 
 ---
@@ -123,7 +124,7 @@ These will be asked in **every** backend interview. Missing any = immediate red 
 
 | Module | Why Interviewers Care | Your Status |
 |--------|----------------------|-------------|
-| **Auth (Module 4)** | "How does your app handle authentication?" is Q1 in every interview. JWT, password hashing, role-based middleware. | 🔴 P3 |
+| **Auth (Module 4)** | "How does your app handle authentication?" is Q1 in every interview. JWT, password hashing, role-based middleware. | ✅ Done |
 | **Testing (Module 19)** | "Show me your tests" — no tests = junior signal. Pytest + TestClient + ≥80% coverage. | 🔴 P4 |
 | **Docker (Module 27)** | "Can you containerize this?" — expected baseline. Multi-stage Dockerfile + docker-compose. | 🔴 P7 |
 | **Error Handling (Module 11)** | Custom exceptions, global handlers, no stack trace leaks. | ✅ Done |
