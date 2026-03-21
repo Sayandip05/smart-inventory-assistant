@@ -81,3 +81,13 @@ class AuthorizationError(AppException):
 
     def __init__(self, message: str = "Insufficient permissions"):
         super().__init__(message)
+
+
+class DatabaseError(AppException):
+    """Database operation failed (500)."""
+
+    status_code = 500
+    error_code = "DATABASE_ERROR"
+
+    def __init__(self, message: str = "A database error occurred"):
+        super().__init__(message)

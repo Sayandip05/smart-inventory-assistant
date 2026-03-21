@@ -12,6 +12,13 @@ from typing import Dict, Any, Optional, List
 
 from app.infrastructure.database.requisition_repo import RequisitionRepository
 from app.infrastructure.database.inventory_repo import InventoryRepository
+from app.core.exceptions import (
+    ValidationError,
+    NotFoundError,
+    InvalidStateError,
+    InsufficientStockError,
+    DatabaseError,
+)
 
 logger = logging.getLogger("smart_inventory.service.requisition")
 
@@ -74,23 +81,21 @@ class RequisitionService:
         try:
             location = self.repo.get_location(location_id)
             if not location:
-                return {"success": False, "error": "Location not found"}
+                raise NotFoundError("Location", location_id)
 
             if urgency not in ("LOW", "NORMAL", "HIGH", "EMERGENCY"):
-                return {"success": False, "error": "Invalid urgency level"}
+                raise ValidationError(
+                    f"Invalid urgency level: {urgency}. Must be LOW, NORMAL, HIGH, or EMERGENCY"
+                )
 
             for item_data in items:
                 item = self.repo.get_item(item_data["item_id"])
                 if not item:
-                    return {
-                        "success": False,
-                        "error": f"Item ID {item_data['item_id']} not found",
-                    }
+                    raise NotFoundError("Item", item_data["item_id"])
                 if item_data.get("quantity", 0) <= 0:
-                    return {
-                        "success": False,
-                        "error": f"Quantity must be positive for item {item.name}",
-                    }
+                    raise ValidationError(
+                        f"Quantity must be positive for item {item.name}"
+                    )
 
             req_number = self._generate_requisition_number()
             requisition = self.repo.create(
@@ -121,9 +126,13 @@ class RequisitionService:
                 "data": self._format_requisition(requisition),
             }
 
+        except (NotFoundError, ValidationError, DatabaseError):
+            self.repo.rollback()
+            raise
         except Exception as e:
             self.repo.rollback()
-            return {"success": False, "error": str(e)}
+            logger.error("Unexpected error in create_requisition: %s", str(e))
+            raise DatabaseError(f"Failed to create requisition: {str(e)}")
 
     def list_requisitions(
         self,
@@ -150,13 +159,12 @@ class RequisitionService:
             requisition = self.repo.get_by_id(requisition_id, load_items=True)
 
             if not requisition:
-                return {"success": False, "error": "Requisition not found"}
+                raise NotFoundError("Requisition", requisition_id)
 
             if requisition.status != "PENDING":
-                return {
-                    "success": False,
-                    "error": f"Cannot approve: requisition is already {requisition.status}",
-                }
+                raise InvalidStateError(
+                    f"Cannot approve: requisition is already {requisition.status}"
+                )
 
             adjustment_map = {}
             if item_adjustments:
@@ -182,10 +190,9 @@ class RequisitionService:
                     )
 
             if stock_errors:
-                return {
-                    "success": False,
-                    "error": "Insufficient stock: " + "; ".join(stock_errors),
-                }
+                raise InsufficientStockError(
+                    "Insufficient stock: " + "; ".join(stock_errors)
+                )
 
             from app.application.inventory_service import InventoryService
 
@@ -204,11 +211,9 @@ class RequisitionService:
                         entered_by=f"system/approved-by-{approved_by}",
                     )
                     if not result["success"]:
-                        self.repo.rollback()
-                        return {
-                            "success": False,
-                            "error": f"Stock deduction failed: {result['error']}",
-                        }
+                        raise DatabaseError(
+                            f"Stock deduction failed: {result.get('error')}"
+                        )
 
             requisition.status = "APPROVED"
             requisition.approved_by = approved_by
@@ -225,9 +230,18 @@ class RequisitionService:
                 "data": self._format_requisition(requisition),
             }
 
+        except (
+            NotFoundError,
+            InvalidStateError,
+            InsufficientStockError,
+            DatabaseError,
+        ):
+            self.repo.rollback()
+            raise
         except Exception as e:
             self.repo.rollback()
-            return {"success": False, "error": str(e)}
+            logger.error("Unexpected error in approve_requisition: %s", str(e))
+            raise DatabaseError(f"Failed to approve requisition: {str(e)}")
 
     def reject_requisition(
         self, requisition_id: int, rejected_by: str, reason: str
@@ -236,13 +250,12 @@ class RequisitionService:
             requisition = self.repo.get_by_id(requisition_id)
 
             if not requisition:
-                return {"success": False, "error": "Requisition not found"}
+                raise NotFoundError("Requisition", requisition_id)
 
             if requisition.status != "PENDING":
-                return {
-                    "success": False,
-                    "error": f"Cannot reject: requisition is already {requisition.status}",
-                }
+                raise InvalidStateError(
+                    f"Cannot reject: requisition is already {requisition.status}"
+                )
 
             requisition.status = "REJECTED"
             requisition.approved_by = rejected_by
@@ -259,9 +272,13 @@ class RequisitionService:
                 "message": f"Requisition {requisition.requisition_number} rejected.",
             }
 
+        except (NotFoundError, InvalidStateError, DatabaseError):
+            self.repo.rollback()
+            raise
         except Exception as e:
             self.repo.rollback()
-            return {"success": False, "error": str(e)}
+            logger.error("Unexpected error in reject_requisition: %s", str(e))
+            raise DatabaseError(f"Failed to reject requisition: {str(e)}")
 
     def cancel_requisition(
         self, requisition_id: int, cancelled_by: str
@@ -270,13 +287,10 @@ class RequisitionService:
             requisition = self.repo.get_by_id(requisition_id)
 
             if not requisition:
-                return {"success": False, "error": "Requisition not found"}
+                raise NotFoundError("Requisition", requisition_id)
 
             if requisition.status != "PENDING":
-                return {
-                    "success": False,
-                    "error": "Only PENDING requisitions can be cancelled",
-                }
+                raise InvalidStateError("Only PENDING requisitions can be cancelled")
 
             requisition.status = "CANCELLED"
             self.repo.commit()
@@ -286,9 +300,13 @@ class RequisitionService:
                 "message": f"Requisition {requisition.requisition_number} cancelled.",
             }
 
+        except (NotFoundError, InvalidStateError, DatabaseError):
+            self.repo.rollback()
+            raise
         except Exception as e:
             self.repo.rollback()
-            return {"success": False, "error": str(e)}
+            logger.error("Unexpected error in cancel_requisition: %s", str(e))
+            raise DatabaseError(f"Failed to cancel requisition: {str(e)}")
 
     def get_stats(self) -> dict:
         return {

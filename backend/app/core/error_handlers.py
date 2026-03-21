@@ -15,6 +15,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from app.core.exceptions import AppException
 
 logger = logging.getLogger("smart_inventory")
@@ -58,6 +59,36 @@ def register_exception_handlers(app: FastAPI):
                 "error": {
                     "code": "VALIDATION_ERROR",
                     "message": details,
+                },
+            },
+        )
+
+    @app.exception_handler(OperationalError)
+    async def database_connection_error_handler(
+        _request: Request, exc: OperationalError
+    ):
+        logger.error("Database connection error: %s", str(exc))
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "error": {
+                    "code": "SERVICE_UNAVAILABLE",
+                    "message": "Database connection error. Please try again later.",
+                },
+            },
+        )
+
+    @app.exception_handler(SQLAlchemyError)
+    async def sqlalchemy_error_handler(_request: Request, exc: SQLAlchemyError):
+        logger.error("SQLAlchemy error: %s", str(exc))
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": {
+                    "code": "DATABASE_ERROR",
+                    "message": "A database error occurred. Please try again.",
                 },
             },
         )

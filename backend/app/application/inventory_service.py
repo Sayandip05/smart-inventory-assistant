@@ -10,7 +10,7 @@ from datetime import date
 from typing import Dict, Any, Optional
 
 from app.infrastructure.database.inventory_repo import InventoryRepository
-from app.core.exceptions import InsufficientStockError
+from app.core.exceptions import InsufficientStockError, ValidationError, DatabaseError
 
 logger = logging.getLogger("smart_inventory.service.inventory")
 
@@ -43,10 +43,9 @@ class InventoryService:
             closing_stock = opening_stock + received - issued
 
             if closing_stock < 0:
-                return {
-                    "success": False,
-                    "error": f"Invalid transaction: closing stock cannot be negative (would be {closing_stock})",
-                }
+                raise ValidationError(
+                    f"Invalid transaction: closing stock cannot be negative (would be {closing_stock})"
+                )
 
             tx = self.repo.create_transaction(
                 location_id=location_id,
@@ -73,9 +72,13 @@ class InventoryService:
                 },
             }
 
+        except (ValidationError, DatabaseError):
+            self.repo.rollback()
+            raise
         except Exception as e:
             self.repo.rollback()
-            return {"success": False, "error": str(e)}
+            logger.error("Unexpected error in add_transaction: %s", str(e))
+            raise DatabaseError(f"Failed to add transaction: {str(e)}")
 
     def bulk_add_transactions(
         self,
@@ -103,7 +106,7 @@ class InventoryService:
                     results.append(result["data"])
                 else:
                     errors.append(
-                        {"item_id": item_data["item_id"], "error": result["error"]}
+                        {"item_id": item_data["item_id"], "error": result.get("error")}
                     )
 
             return {
@@ -112,9 +115,13 @@ class InventoryService:
                 "data": {"successful": results, "failed": errors},
             }
 
+        except (ValidationError, DatabaseError):
+            self.repo.rollback()
+            raise
         except Exception as e:
             self.repo.rollback()
-            return {"success": False, "error": str(e)}
+            logger.error("Unexpected error in bulk_add_transactions: %s", str(e))
+            raise DatabaseError(f"Failed to process bulk transactions: {str(e)}")
 
     def get_latest_stock(self, location_id: int, item_id: int) -> Optional[int]:
         latest = self.repo.get_latest_transaction(location_id, item_id)
