@@ -7,7 +7,7 @@ delegated to the repositories.
 """
 
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Dict, Any, Optional, List
 
 from app.infrastructure.database.requisition_repo import RequisitionRepository
@@ -217,6 +217,7 @@ class RequisitionService:
 
             requisition.status = "APPROVED"
             requisition.approved_by = approved_by
+            requisition.approved_at = datetime.now(timezone.utc)
             self.repo.commit()
 
             logger.info(
@@ -260,6 +261,7 @@ class RequisitionService:
             requisition.status = "REJECTED"
             requisition.approved_by = rejected_by
             requisition.rejection_reason = reason
+            requisition.rejected_at = datetime.now(timezone.utc)
             self.repo.commit()
 
             logger.info(

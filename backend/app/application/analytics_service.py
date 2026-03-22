@@ -1,3 +1,10 @@
+"""
+Analytics service — business logic layer for stock health and dashboard data.
+
+Raises exceptions instead of returning error dicts for consistency with
+the rest of the application's error handling pattern.
+"""
+
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 from app.infrastructure.database.queries import (
@@ -6,6 +13,7 @@ from app.infrastructure.database.queries import (
     get_heatmap_data,
 )
 from app.domain.calculations import format_stock_item, calculate_reorder_quantity
+from app.core.exceptions import AppException
 
 
 class AnalyticsService:
@@ -26,7 +34,7 @@ class AnalyticsService:
                 },
             }
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            raise AppException(f"Failed to generate heatmap: {str(e)}")
 
     @staticmethod
     def get_alerts(db: Session, severity: str = "CRITICAL") -> Dict[str, Any]:
@@ -55,7 +63,7 @@ class AnalyticsService:
                 },
             }
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            raise AppException(f"Failed to fetch alerts: {str(e)}")
 
     @staticmethod
     def get_summary(db: Session) -> Dict[str, Any]:
@@ -104,7 +112,7 @@ class AnalyticsService:
                 },
             }
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            raise AppException(f"Failed to generate summary: {str(e)}")
 
     @staticmethod
     def get_dashboard_stats(db: Session) -> Dict[str, Any]:
@@ -176,4 +184,4 @@ class AnalyticsService:
                 },
             }
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            raise AppException(f"Failed to generate dashboard stats: {str(e)}")

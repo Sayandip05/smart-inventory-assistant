@@ -1,24 +1,44 @@
-from fastapi import APIRouter, Depends
+"""
+Analytics API routes — heatmap, alerts, summary, dashboard stats.
+
+All GET endpoints are cached via Redis (5 min TTL).
+Cache is invalidated when inventory data changes.
+"""
+
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 from app.infrastructure.database.connection import get_db
 from app.application.analytics_service import AnalyticsService
+from app.application.cache_service import cache_get, cache_set, ANALYTICS_TTL, DASHBOARD_TTL
 from app.core.exceptions import ValidationError
 from app.core.dependencies import get_current_user
+from app.core.rate_limiter import limiter
 from app.infrastructure.database.models import User
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
 
 @router.get("/heatmap")
+@limiter.limit("30/minute")
 def get_heatmap(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return AnalyticsService.get_heatmap(db)
+    cache_key = "analytics:heatmap"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    result = AnalyticsService.get_heatmap(db)
+    cache_set(cache_key, result, ttl=ANALYTICS_TTL)
+    return result
 
 
 @router.get("/alerts")
+@limiter.limit("30/minute")
 def get_alerts(
+    request: Request,
     severity: str = "CRITICAL",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -26,20 +46,45 @@ def get_alerts(
     if severity not in ["CRITICAL", "WARNING"]:
         raise ValidationError("Severity must be CRITICAL or WARNING")
 
-    return AnalyticsService.get_alerts(db, severity)
+    cache_key = f"analytics:alerts:{severity}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    result = AnalyticsService.get_alerts(db, severity)
+    cache_set(cache_key, result, ttl=ANALYTICS_TTL)
+    return result
 
 
 @router.get("/summary")
+@limiter.limit("30/minute")
 def get_summary(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return AnalyticsService.get_summary(db)
+    cache_key = "analytics:summary"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    result = AnalyticsService.get_summary(db)
+    cache_set(cache_key, result, ttl=ANALYTICS_TTL)
+    return result
 
 
 @router.get("/dashboard/stats")
+@limiter.limit("30/minute")
 def get_dashboard_stats(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return AnalyticsService.get_dashboard_stats(db)
+    cache_key = "analytics:dashboard_stats"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    result = AnalyticsService.get_dashboard_stats(db)
+    cache_set(cache_key, result, ttl=DASHBOARD_TTL)
+    return result
