@@ -1,18 +1,37 @@
+# ── Core Framework ──────────────────────────────────────────
 fastapi==0.104.1
 uvicorn==0.24.0
+python-multipart==0.0.6
+
+# ── Database ────────────────────────────────────────────────
 sqlalchemy==2.0.23
+psycopg2-binary
+
+# ── Validation & Config ────────────────────────────────────
 pydantic>=2.8.0
 pydantic[email]
 python-dotenv==1.0.0
-python-multipart==0.0.6
+
+# ── Authentication ──────────────────────────────────────────
+python-jose[cryptography]
+passlib[bcrypt]
+
+# ── AI / LangChain ──────────────────────────────────────────
 langchain>=0.2.0
 langchain-core>=0.2.0
 langchain-openai
 langchain-groq
 langchain-community
 langgraph
-httpx
+
+# ── Vector Memory ───────────────────────────────────────────
 chromadb
+
+# ── HTTP & Observability ────────────────────────────────────
+httpx
+requests
 langsmith
-python-jose[cryptography]
-passlib[bcrypt]
+
+# ── Caching & Rate Limiting ─────────────────────────────────
+redis
+slowapi

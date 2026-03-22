@@ -7,6 +7,7 @@ from sqlalchemy import (
     ForeignKey,
     TIMESTAMP,
     Boolean,
+    JSON,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -24,6 +25,9 @@ class User(Base):
     role = Column(String(50), nullable=False, default="staff")
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)
+    login_attempts = Column(Integer, default=0)
+    locked_until = Column(TIMESTAMP, nullable=True)
+    last_login_at = Column(TIMESTAMP, nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
@@ -37,6 +41,7 @@ class Location(Base):
     region = Column(String(100), nullable=False)
     address = Column(Text)
     created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
     transactions = relationship("InventoryTransaction", back_populates="location")
 
@@ -51,6 +56,7 @@ class Item(Base):
     lead_time_days = Column(Integer, nullable=False)
     min_stock = Column(Integer, nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
     transactions = relationship("InventoryTransaction", back_populates="item")
 
@@ -114,6 +120,8 @@ class Requisition(Base):
     urgency = Column(String(20), nullable=False, default="NORMAL")
     status = Column(String(20), nullable=False, default="PENDING")
     approved_by = Column(String(100), nullable=True)
+    approved_at = Column(TIMESTAMP, nullable=True)
+    rejected_at = Column(TIMESTAMP, nullable=True)
     rejection_reason = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
@@ -134,6 +142,25 @@ class RequisitionItem(Base):
     quantity_requested = Column(Integer, nullable=False)
     quantity_approved = Column(Integer, nullable=True)
     notes = Column(Text, nullable=True)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
     requisition = relationship("Requisition", back_populates="items")
     item = relationship("Item")
+
+
+class AuditLog(Base):
+    """Tracks all user actions for audit trail."""
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    username = Column(String(100), nullable=False)
+    action = Column(String(50), nullable=False)  # CREATE, UPDATE, DELETE, APPROVE, REJECT, LOGIN
+    resource_type = Column(String(50), nullable=False)  # user, location, item, transaction, requisition
+    resource_id = Column(String(100), nullable=True)
+    details = Column(JSON, nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+    user = relationship("User")
