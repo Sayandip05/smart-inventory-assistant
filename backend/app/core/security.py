@@ -148,11 +148,13 @@ def verify_refresh_token(token: str) -> Dict[str, Any]:
 
 # ── Role hierarchy ────────────────────────────────────────────────────────
 
-ALLOWED_ROLES = {"admin", "manager", "staff", "viewer"}
+ALLOWED_ROLES = {"super_admin", "admin", "manager", "staff", "vendor", "viewer"}
 ROLE_HIERARCHY = {
-    "admin": 4,
-    "manager": 3,
-    "staff": 2,
+    "super_admin": 6,
+    "admin": 5,
+    "manager": 4,
+    "staff": 3,
+    "vendor": 2,
     "viewer": 1,
 }
 
@@ -162,3 +164,4 @@ def check_role_permission(user_role: str, required_role: str) -> bool:
     if user_role not in ALLOWED_ROLES or required_role not in ALLOWED_ROLES:
         return False
     return ROLE_HIERARCHY.get(user_role, 0) >= ROLE_HIERARCHY.get(required_role, 0)
+

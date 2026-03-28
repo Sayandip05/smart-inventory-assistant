@@ -37,6 +37,9 @@ class Settings:
     MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "5"))
     LOCKOUT_DURATION_MINUTES = int(os.getenv("LOCKOUT_DURATION_MINUTES", "15"))
 
+    # ── Super Admin (platform owner) ────────────────────────────────
+    SUPER_ADMIN_EMAIL = os.getenv("SUPER_ADMIN_EMAIL", "sayandip@inviq.io")
+
     # ── Admin Seed (first startup only) ───────────────────────────────
     ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@inventory.local")
     ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")

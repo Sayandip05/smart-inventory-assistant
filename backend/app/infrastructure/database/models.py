@@ -14,15 +14,37 @@ from sqlalchemy.sql import func
 from app.infrastructure.database.connection import Base
 
 
+# ── Multi-tenancy root ────────────────────────────────────────────────────
+
+class Organization(Base):
+    """Multi-tenancy root — every entity belongs to an org."""
+    __tablename__ = "organizations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), unique=True, nullable=False)
+    slug = Column(String(100), unique=True, nullable=False, index=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    users = relationship("User", back_populates="organization")
+    locations = relationship("Location", back_populates="organization")
+    items = relationship("Item", back_populates="organization")
+
+
+# ── Users ─────────────────────────────────────────────────────────────────
+
 class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     username = Column(String(100), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(200), nullable=True)
     role = Column(String(50), nullable=False, default="staff")
+    location_ids = Column(JSON, default=[])  # Scoped locations for staff/vendor
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)
     login_attempts = Column(Integer, default=0)
@@ -31,11 +53,16 @@ class User(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
+    organization = relationship("Organization", back_populates="users")
+
+
+# ── Inventory ─────────────────────────────────────────────────────────────
 
 class Location(Base):
     __tablename__ = "locations"
 
     id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     name = Column(String(200), nullable=False)
     type = Column(String(50), nullable=False)
     region = Column(String(100), nullable=False)
@@ -43,6 +70,7 @@ class Location(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
+    organization = relationship("Organization", back_populates="locations")
     transactions = relationship("InventoryTransaction", back_populates="location")
 
 
@@ -50,6 +78,7 @@ class Item(Base):
     __tablename__ = "items"
 
     id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     name = Column(String(200), nullable=False)
     category = Column(String(100), nullable=False)
     unit = Column(String(50), nullable=False)
@@ -58,6 +87,7 @@ class Item(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
+    organization = relationship("Organization", back_populates="items")
     transactions = relationship("InventoryTransaction", back_populates="item")
 
 
@@ -80,11 +110,13 @@ class InventoryTransaction(Base):
     item = relationship("Item", back_populates="transactions")
 
 
+# ── Chat ──────────────────────────────────────────────────────────────────
+
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
     id = Column(String(100), primary_key=True)
-    user_id = Column(Integer, nullable=False, index=True)  # User.id (integer, not string)
+    user_id = Column(Integer, nullable=False, index=True)
     title = Column(String(200), default="New Conversation")
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
@@ -108,6 +140,8 @@ class ChatMessage(Base):
 
     session = relationship("ChatSession", back_populates="messages")
 
+
+# ── Requisitions ──────────────────────────────────────────────────────────
 
 class Requisition(Base):
     __tablename__ = "requisitions"
@@ -149,15 +183,40 @@ class RequisitionItem(Base):
     item = relationship("Item")
 
 
+# ── Vendor Uploads (NEW) ─────────────────────────────────────────────────
+
+class VendorUpload(Base):
+    """Tracks Excel delivery uploads by vendors."""
+    __tablename__ = "vendor_uploads"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vendor_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    filename = Column(String(255), nullable=False)
+    location_id = Column(Integer, ForeignKey("locations.id"), nullable=False)
+    total_rows = Column(Integer, nullable=False, default=0)
+    success_rows = Column(Integer, nullable=False, default=0)
+    error_rows = Column(Integer, nullable=False, default=0)
+    errors_detail = Column(JSON, nullable=True)  # [{row: 3, reason: "item not found"}]
+    status = Column(String(20), nullable=False, default="PROCESSING")  # PROCESSING, COMPLETED, FAILED
+    uploaded_at = Column(TIMESTAMP, server_default=func.now())
+
+    vendor = relationship("User")
+    location = relationship("Location")
+
+
+# ── Audit Log ─────────────────────────────────────────────────────────────
+
 class AuditLog(Base):
     """Tracks all user actions for audit trail."""
     __tablename__ = "audit_logs"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     username = Column(String(100), nullable=False)
-    action = Column(String(50), nullable=False)  # CREATE, UPDATE, DELETE, APPROVE, REJECT, LOGIN
-    resource_type = Column(String(50), nullable=False)  # user, location, item, transaction, requisition
+    action = Column(String(50), nullable=False)
+    resource_type = Column(String(50), nullable=False)
     resource_id = Column(String(100), nullable=True)
     details = Column(JSON, nullable=True)
     ip_address = Column(String(45), nullable=True)

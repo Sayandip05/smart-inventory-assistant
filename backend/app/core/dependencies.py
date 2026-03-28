@@ -167,3 +167,28 @@ def require_viewer(
     current_user: Annotated[User, Depends(require_role("viewer"))],
 ) -> User:
     return current_user
+
+
+def require_super_admin(
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    """Only the platform super_admin can access these endpoints."""
+    if current_user.role != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super Admin access required.",
+        )
+    return current_user
+
+
+def require_vendor(
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    """Vendor or higher role."""
+    if current_user.role not in {"vendor", "staff", "manager", "admin", "super_admin"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Vendor access required.",
+        )
+    return current_user
+
