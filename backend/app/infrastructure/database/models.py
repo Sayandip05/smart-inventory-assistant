@@ -84,7 +84,7 @@ class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
     id = Column(String(100), primary_key=True)
-    user_id = Column(String(100), default="admin")
+    user_id = Column(Integer, nullable=False, index=True)  # User.id (integer, not string)
     title = Column(String(200), default="New Conversation")
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())

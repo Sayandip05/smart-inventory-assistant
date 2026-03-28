@@ -28,6 +28,7 @@ class InventoryService:
         issued: int,
         notes: Optional[str] = None,
         entered_by: str = "staff",
+        flush_only: bool = False,
     ) -> Dict[str, Any]:
         try:
             previous = self.repo.get_previous_transaction(
@@ -48,6 +49,7 @@ class InventoryService:
                 )
 
             tx = self.repo.create_transaction(
+                flush_only=flush_only,
                 location_id=location_id,
                 item_id=item_id,
                 date=transaction_date,

@@ -199,6 +199,7 @@ class RequisitionService:
             inv_service = InventoryService(self.inv_repo)
             today = date.today()
 
+            # ── Atomic batch: flush each deduction, commit once at the end ──
             for req_item in requisition.items:
                 if req_item.quantity_approved and req_item.quantity_approved > 0:
                     result = inv_service.add_transaction(
@@ -209,6 +210,7 @@ class RequisitionService:
                         issued=req_item.quantity_approved,
                         notes=f"Stock OUT: {requisition.requisition_number} ({requisition.department})",
                         entered_by=f"system/approved-by-{approved_by}",
+                        flush_only=True,  # Don't commit individual items
                     )
                     if not result["success"]:
                         raise DatabaseError(
@@ -218,7 +220,7 @@ class RequisitionService:
             requisition.status = "APPROVED"
             requisition.approved_by = approved_by
             requisition.approved_at = datetime.now(timezone.utc)
-            self.repo.commit()
+            self.repo.commit()  # Single atomic commit for all items
 
             logger.info(
                 "Requisition %s approved by %s",

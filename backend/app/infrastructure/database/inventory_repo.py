@@ -91,11 +91,22 @@ class InventoryRepository:
             .first()
         )
 
-    def create_transaction(self, **kwargs) -> InventoryTransaction:
+    def create_transaction(self, flush_only: bool = False, **kwargs) -> InventoryTransaction:
+        """
+        Create an inventory transaction.
+
+        Args:
+            flush_only: If True, flush to DB (get ID) but do NOT commit.
+                        The caller is responsible for calling commit().
+                        Used by requisition approval for atomic multi-item operations.
+        """
         try:
             tx = InventoryTransaction(**kwargs)
             self.db.add(tx)
-            self.db.commit()
+            if flush_only:
+                self.db.flush()  # Stage the write, assign PK, but don't commit
+            else:
+                self.db.commit()
             self.db.refresh(tx)
             return tx
         except SQLAlchemyError as e:
