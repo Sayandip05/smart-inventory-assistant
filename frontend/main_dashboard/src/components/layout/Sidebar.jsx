@@ -1,8 +1,19 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Package, MessageSquare, LogOut, ClipboardList, Users } from 'lucide-react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, Package, MessageSquare, LogOut, ClipboardList, Users, ShieldCheck } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+
+const ROLE_LABELS = {
+    admin: { label: 'Admin', color: 'bg-red-900 text-red-300' },
+    manager: { label: 'Manager', color: 'bg-yellow-900 text-yellow-300' },
+    staff: { label: 'Staff', color: 'bg-blue-900 text-blue-300' },
+    viewer: { label: 'Viewer', color: 'bg-slate-700 text-slate-300' },
+};
 
 const Sidebar = () => {
+    const { user, logout } = useAuth();
+    const navigate = useNavigate();
+
     const navItems = [
         { path: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { path: '/admin/inventory', label: 'Inventory', icon: Package },
@@ -10,13 +21,22 @@ const Sidebar = () => {
         { path: '/admin/chat', label: 'AI Assistant', icon: MessageSquare },
     ];
 
+    const handleLogout = async () => {
+        await logout();
+        navigate('/login', { replace: true });
+    };
+
+    const roleInfo = ROLE_LABELS[user?.role] || ROLE_LABELS.viewer;
+
     return (
         <div className="h-screen w-64 bg-slate-900 text-white flex flex-col p-4 shadow-xl">
+            {/* Brand */}
             <div className="mb-8 px-4 py-2">
                 <h1 className="text-xl font-bold text-blue-400">SmartInventory</h1>
                 <p className="text-xs text-slate-400 mt-1">Admin Portal</p>
             </div>
 
+            {/* Nav links */}
             <nav className="flex-1 space-y-1">
                 {navItems.map((item) => (
                     <NavLink
@@ -35,7 +55,9 @@ const Sidebar = () => {
                 ))}
             </nav>
 
-            <div className="mt-auto pt-4 border-t border-slate-800 space-y-1">
+            {/* Bottom section */}
+            <div className="mt-auto pt-4 border-t border-slate-800 space-y-2">
+                {/* Portal links */}
                 <NavLink
                     to="/staff"
                     className="flex items-center space-x-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
@@ -43,13 +65,31 @@ const Sidebar = () => {
                     <Users size={20} />
                     <span className="font-medium">Staff Portal</span>
                 </NavLink>
-                <NavLink
-                    to="/vendor"
-                    className="flex items-center space-x-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+
+                {/* Logged-in user info */}
+                {user && (
+                    <div className="px-4 py-3 rounded-lg bg-slate-800/60 flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold uppercase">
+                            {user.username?.[0] || '?'}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-white truncate">{user.username}</p>
+                            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${roleInfo.color}`}>
+                                {roleInfo.label}
+                            </span>
+                        </div>
+                    </div>
+                )}
+
+                {/* Logout button */}
+                <button
+                    id="sidebar-logout"
+                    onClick={handleLogout}
+                    className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-red-400 hover:bg-red-950/50 hover:text-red-300 transition-colors text-left"
                 >
                     <LogOut size={20} />
-                    <span className="font-medium">Vendor Portal</span>
-                </NavLink>
+                    <span className="font-medium">Sign Out</span>
+                </button>
             </div>
         </div>
     );
