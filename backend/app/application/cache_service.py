@@ -1,93 +1,143 @@
 """
-Cache Service — generic caching for expensive queries (analytics, dashboard).
+Cache Service — generic Redis caching for expensive queries.
 
 Layer: Application
-Uses Redis with JSON serialization. Falls back to no-cache when unavailable.
+
+Features:
+  - cache_get / cache_set / cache_delete / cache_invalidate_pattern
+  - @cached(key, ttl) decorator for clean endpoint caching
+  - SCAN-based key iteration (production-safe, non-blocking unlike KEYS)
+  - User-scoped caching support via key suffixes
+
+TTL reference:
+  DASHBOARD_TTL   = 120s  (2 min)   — stats shown on dashboard
+  ANALYTICS_TTL   = 300s  (5 min)   — deeper analytics queries
+  REALTIME_TTL    = 30s   (30 sec)  — near-realtime feeds
 """
 
 import json
 import logging
-from typing import Any, Optional
-from app.infrastructure.cache.redis_client import get_redis, is_redis_available
+import functools
+from typing import Any, Optional, Callable
+from app.infrastructure.cache.redis_client import get_redis
 
 logger = logging.getLogger("smart_inventory.cache")
 
-# Default TTL in seconds
-DEFAULT_TTL = 300  # 5 minutes
-ANALYTICS_TTL = 300  # 5 minutes — analytics data doesn't change frequently
-DASHBOARD_TTL = 120  # 2 minutes — dashboard stats slightly more fresh
+# ── TTL constants ─────────────────────────────────────────────────────────
+DASHBOARD_TTL  = 120   # 2 minutes
+ANALYTICS_TTL  = 300   # 5 minutes
+REALTIME_TTL   = 30    # 30 seconds
+DEFAULT_TTL    = 300
 
-# Key prefix
+# Key prefix — separates our app keys from slowapi rate-limit keys in Redis
 _PREFIX = "cache:"
 
+
+# ── Core primitives ───────────────────────────────────────────────────────
 
 def cache_get(key: str) -> Optional[Any]:
     """
     Retrieve a cached value by key.
 
-    Returns:
-        Deserialized value, or None if not found / Redis unavailable
+    Returns deserialized value, or None if not found / Redis unavailable.
     """
     r = get_redis()
-    if not r or not is_redis_available():
+    if not r:
         return None
-
     try:
         raw = r.get(f"{_PREFIX}{key}")
-        if raw is None:
-            return None
-        return json.loads(raw)
+        return json.loads(raw) if raw is not None else None
     except Exception as e:
-        logger.warning("Cache read failed for key=%s: %s", key, e)
+        logger.warning("cache_get failed key=%s: %s", key, e)
         return None
 
 
-def cache_set(key: str, value: Any, ttl: int = DEFAULT_TTL) -> None:
+def cache_set(key: str, value: Any, ttl: int = DEFAULT_TTL) -> bool:
     """
-    Store a value in cache with TTL.
+    Store a JSON-serializable value with TTL.
 
-    Args:
-        key: Cache key
-        value: JSON-serializable value
-        ttl: Time-to-live in seconds (default 5 min)
+    Returns True on success, False if Redis unavailable.
     """
     r = get_redis()
-    if not r or not is_redis_available():
-        return
-
+    if not r:
+        return False
     try:
         r.setex(f"{_PREFIX}{key}", ttl, json.dumps(value, default=str))
+        return True
     except Exception as e:
-        logger.warning("Cache write failed for key=%s: %s", key, e)
+        logger.warning("cache_set failed key=%s: %s", key, e)
+        return False
 
 
 def cache_delete(key: str) -> None:
     """Delete a specific cache entry."""
     r = get_redis()
-    if not r or not is_redis_available():
+    if not r:
         return
-
     try:
         r.delete(f"{_PREFIX}{key}")
     except Exception as e:
-        logger.warning("Cache delete failed for key=%s: %s", key, e)
+        logger.warning("cache_delete failed key=%s: %s", key, e)
 
 
-def cache_invalidate_pattern(pattern: str) -> None:
+def cache_invalidate_pattern(pattern: str) -> int:
     """
-    Invalidate all cache keys matching a pattern.
+    Invalidate all cache keys matching a glob pattern.
 
-    Args:
-        pattern: Glob pattern (e.g., "analytics:*")
+    Uses SCAN (not KEYS) — safe for large Redis keyspaces in production.
+    Returns the number of keys deleted.
+
+    Example:
+        cache_invalidate_pattern("analytics:*")
     """
     r = get_redis()
-    if not r or not is_redis_available():
-        return
+    if not r:
+        return 0
 
     try:
-        keys = r.keys(f"{_PREFIX}{pattern}")
-        if keys:
-            r.delete(*keys)
-            logger.debug("Invalidated %d cache keys matching '%s'", len(keys), pattern)
+        full_pattern = f"{_PREFIX}{pattern}"
+        deleted = 0
+        cursor = 0
+        while True:
+            cursor, keys = r.scan(cursor=cursor, match=full_pattern, count=100)
+            if keys:
+                r.delete(*keys)
+                deleted += len(keys)
+            if cursor == 0:
+                break
+        if deleted:
+            logger.debug("Cache invalidated %d keys matching '%s'", deleted, pattern)
+        return deleted
     except Exception as e:
-        logger.warning("Cache invalidation failed for pattern=%s: %s", pattern, e)
+        logger.warning("cache_invalidate_pattern failed pattern=%s: %s", pattern, e)
+        return 0
+
+
+# ── @cached decorator ─────────────────────────────────────────────────────
+
+def cached(key: str, ttl: int = DEFAULT_TTL):
+    """
+    Decorator to cache a function's return value in Redis.
+
+    Usage:
+        @cached("analytics:dashboard_stats", ttl=DASHBOARD_TTL)
+        def get_dashboard_stats(db):
+            ...
+
+    The decorated function is called only on cache miss.
+    Result must be JSON-serializable.
+    """
+    def decorator(func: Callable):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            cached_value = cache_get(key)
+            if cached_value is not None:
+                logger.debug("Cache HIT key=%s", key)
+                return cached_value
+
+            logger.debug("Cache MISS key=%s — calling function", key)
+            result = func(*args, **kwargs)
+            cache_set(key, result, ttl)
+            return result
+        return wrapper
+    return decorator
