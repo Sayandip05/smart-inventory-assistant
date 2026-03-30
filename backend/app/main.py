@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 
 from app.api.routes import analytics, chat, inventory, requisition, auth, admin
+from app.api.routes import superadmin as superadmin_routes
+from app.api.routes import vendor as vendor_routes
 from app.api.routes.websocket import router as ws_router
 from app.core.config import settings
 from app.infrastructure.database.connection import Base, engine
@@ -106,6 +108,8 @@ app.include_router(chat.router, prefix=settings.API_V1_PREFIX)
 app.include_router(inventory.router, prefix=settings.API_V1_PREFIX)
 app.include_router(requisition.router, prefix=settings.API_V1_PREFIX)
 app.include_router(admin.router, prefix=settings.API_V1_PREFIX)
+app.include_router(superadmin_routes.router, prefix=settings.API_V1_PREFIX)
+app.include_router(vendor_routes.router, prefix=settings.API_V1_PREFIX)
 app.include_router(ws_router)
 
 

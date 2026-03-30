@@ -61,6 +61,26 @@ class InventoryService:
                 entered_by=entered_by,
             )
 
+            # ── Stock alert detection ───────────────────────────────────
+            item = self.repo.get_item_by_id(item_id)
+            if item and closing_stock <= item.min_stock:
+                alert_status = "CRITICAL" if closing_stock <= 0 else "WARNING"
+                logger.warning(
+                    "Stock alert [%s]: %s at location %d — stock=%d, min=%d",
+                    alert_status, item.name, location_id, closing_stock, item.min_stock,
+                )
+                # Queue alert for WebSocket broadcast
+                from app.api.routes.websocket import pending_alerts
+                pending_alerts.append({
+                    "type": "stock_alert",
+                    "status": alert_status,
+                    "item_name": item.name,
+                    "item_id": item_id,
+                    "location_id": location_id,
+                    "current_stock": closing_stock,
+                    "min_stock": item.min_stock,
+                })
+
             return {
                 "success": True,
                 "message": "Transaction added successfully",

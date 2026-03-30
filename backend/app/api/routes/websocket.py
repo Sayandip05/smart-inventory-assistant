@@ -52,6 +52,11 @@ class ConnectionManager:
 # Singleton manager — importable by inventory routes for broadcasting
 manager = ConnectionManager()
 
+# ── Pending alerts queue (sync → async bridge) ────────────────────────────
+# inventory_service.py (sync) appends to this list.
+# The WebSocket loop drains it during each ping cycle.
+pending_alerts: list = []
+
 
 @router.websocket("/ws/alerts")
 async def websocket_alerts(websocket: WebSocket):

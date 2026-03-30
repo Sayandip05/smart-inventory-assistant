@@ -40,6 +40,10 @@ slowapi
 # ── WebSocket ───────────────────────────────────────────────
 websockets
 
+# ── Vendor & Reports ────────────────────────────────────────
+openpyxl                    # Excel parsing for vendor delivery uploads
+reportlab                   # PDF report generation
+
 # ── Testing ─────────────────────────────────────────────────
 pytest
 pytest-asyncio

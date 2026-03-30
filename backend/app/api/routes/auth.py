@@ -167,7 +167,7 @@ def login(
     db.record_login(user)
 
     access_token = create_access_token(
-        {"sub": user.id, "username": user.username, "role": user.role}
+        {"sub": user.id, "username": user.username, "role": user.role, "org_id": user.org_id}
     )
     refresh_token = create_refresh_token({"sub": user.id, "username": user.username})
 
@@ -266,7 +266,7 @@ def refresh_token(
     bl_refresh(request_body.refresh_token)
 
     access_token = create_access_token(
-        {"sub": user.id, "username": user.username, "role": user.role}
+        {"sub": user.id, "username": user.username, "role": user.role, "org_id": user.org_id}
     )
     new_refresh_token = create_refresh_token({"sub": user.id, "username": user.username})
 
