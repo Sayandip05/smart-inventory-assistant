@@ -62,12 +62,15 @@ def create_organization(
     current_user: User = Depends(require_super_admin),
 ):
     """Create a new organization."""
-    data = request._json if hasattr(request, '_json') else {}
-    # We need to get the body differently in FastAPI
     import json
-    body = json.loads(request._body.decode()) if hasattr(request, '_body') else {}
+    
+    # Parse request body
+    try:
+        body = json.loads(request._body.decode()) if hasattr(request, '_body') and request._body else {}
+    except:
+        body = {}
 
-    name = body.get("name", "").strip()
+    name = body.get("name", "").strip() if body else ""
     if not name or len(name) < 2:
         raise ValidationError("Organization name must be at least 2 characters")
 
@@ -163,11 +166,16 @@ def assign_admin_to_org(
 ):
     """Assign admin role to a user and associate them with an organization."""
     import json
-    body = json.loads(request._body.decode()) if hasattr(request, '_body') else {}
+    
+    # Parse request body
+    try:
+        body = json.loads(request._body.decode()) if hasattr(request, '_body') and request._body else {}
+    except:
+        body = {}
 
-    user_id = body.get("user_id")
-    org_id = body.get("org_id")
-    role = body.get("role", "admin")
+    user_id = body.get("user_id") if body else None
+    org_id = body.get("org_id") if body else None
+    role = body.get("role", "admin") if body else "admin"
 
     if not user_id or not org_id:
         raise ValidationError("user_id and org_id are required")

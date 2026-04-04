@@ -4,9 +4,26 @@ from dotenv import load_dotenv
 
 from pathlib import Path
 
-root_dir = Path(__file__).resolve().parent.parent.parent
-env_path = root_dir / ".env"
-load_dotenv(dotenv_path=env_path)
+# Try to find .env in multiple locations
+# 1. Current directory (for running from project root)
+# 2. Parent of backend folder (project root)
+# 3. Backend folder itself
+possible_env_paths = [
+    Path(".").resolve() / ".env",  # Current directory
+    Path(__file__).resolve().parent.parent.parent.parent / ".env",  # Project root (backend/../)
+    Path(__file__).resolve().parent.parent.parent / ".env",  # Backend folder
+]
+
+env_loaded = False
+for env_path in possible_env_paths:
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path)
+        env_loaded = True
+        break
+
+if not env_loaded:
+    # Try loading without explicit path (uses cwd)
+    load_dotenv()
 
 logger = logging.getLogger("smart_inventory")
 

@@ -236,24 +236,37 @@ def logout(
 @router.post("/refresh", response_model=dict)
 @limiter.limit("10/minute")
 def refresh_token(
-    request_body: RefreshTokenRequest,
     request: Request,
     db: Session = Depends(get_user_repo),
 ):
     """
     Refresh access token. Implements token rotation:
     the old refresh token is blacklisted after use (one-time use only).
+    
+    Accepts refresh_token in request body.
     """
     from app.infrastructure.cache.token_blacklist import (
         blacklist_refresh_token as bl_refresh,
         is_token_blacklisted,
     )
+    import json
+    
+    # Parse request body manually to get refresh_token
+    try:
+        body = json.loads(request._body.decode()) if hasattr(request, '_body') and request._body else {}
+    except:
+        body = {}
+    
+    refresh_token_str = body.get('refresh_token') if body else None
+    
+    if not refresh_token_str:
+        raise AuthenticationError("refresh_token is required")
 
     # Reject if the refresh token was already used (rotation replay attack)
-    if is_token_blacklisted(request_body.refresh_token):
+    if is_token_blacklisted(refresh_token_str):
         raise AuthenticationError("Refresh token has already been used or revoked")
 
-    payload = verify_refresh_token(request_body.refresh_token)
+    payload = verify_refresh_token(refresh_token_str)
     user_id = payload.get("sub")
 
     user = db.get_by_id(user_id)
@@ -263,7 +276,7 @@ def refresh_token(
         raise AuthenticationError("User account is disabled")
 
     # ── Token rotation: blacklist the old refresh token ────────────────
-    bl_refresh(request_body.refresh_token)
+    bl_refresh(refresh_token_str)
 
     access_token = create_access_token(
         {"sub": user.id, "username": user.username, "role": user.role, "org_id": user.org_id}
