@@ -40,13 +40,22 @@ export const auth = {
     logout: () => api.post('/auth/logout'),
     register: (data) => api.post('/auth/register', data),
     me: () => api.get('/auth/me'),
-    listUsers: (params) => api.get('/auth/users', { params }),
+    list: (params) => api.get('/auth/users', { params }),
+    get: (id) => api.get(`/auth/users/${id}`),
+    update: (id, data) => api.put(`/auth/users/${id}`, data),
+    delete: (id) => api.delete(`/auth/users/${id}`),
     activateUser: (id) => api.put(`/auth/users/${id}/activate`),
     deactivateUser: (id) => api.put(`/auth/users/${id}/deactivate`),
     resetPassword: (id, data) => api.post(`/auth/users/${id}/reset-password`, data),
     updateRole: (id, data) => api.put(`/auth/users/${id}/role`, data),
     changePassword: (data) => api.post('/auth/change-password', data),
     refresh: (data) => api.post('/auth/refresh', data),
+    // Password reset
+    requestPasswordReset: (data) => api.post('/auth/request-password-reset', data),
+    resetPassword: (data) => api.post('/auth/reset-password', data),
+    verifyEmail: (data) => api.post('/auth/verify-email', data),
+    // OAuth
+    googleAuth: (idToken) => api.post('/auth/google-auth', { id_token: idToken }),
 };
 
 // ── Analytics ─────────────────────────────────────────────────────────────
@@ -96,6 +105,7 @@ export const admin = {
     overview: () => api.get('/admin/overview'),
     auditLogs: (params) => api.get('/admin/audit-logs', { params }),
     usersSummary: () => api.get('/admin/users/summary'),
+    generateReport: (reportType, params) => api.get(`/admin/reports/generate?report_type=${reportType}&${params}`, { responseType: 'blob' }),
 };
 
 export default api;

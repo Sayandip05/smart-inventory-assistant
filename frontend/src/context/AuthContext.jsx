@@ -13,6 +13,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import api, { auth } from '../services/api';
 
 const AuthContext = createContext(null);
+export const AuthContextConsumer = AuthContext;
 
 /** Decode JWT payload without a library (tokens are base64 encoded, not encrypted). */
 function decodeJwt(token) {

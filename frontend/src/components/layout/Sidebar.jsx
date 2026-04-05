@@ -20,10 +20,13 @@ const ROLE_LABELS = {
  * Each item specifies which roles can see it.
  */
 const ALL_NAV_ITEMS = [
-    // ── Super Admin ───────────────────────────────
+    // ── Admin Portal ─────────────────────────────────────────────
     { path: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['super_admin', 'admin', 'manager', 'viewer'] },
     { path: '/admin/inventory', label: 'Inventory', icon: Package, roles: ['super_admin', 'admin', 'manager', 'viewer'] },
     { path: '/admin/requisitions', label: 'Requisitions', icon: ClipboardList, roles: ['super_admin', 'admin', 'manager'] },
+    { path: '/admin/users', label: 'User Management', icon: Users, roles: ['super_admin', 'admin'] },
+    { path: '/admin/audit-logs', label: 'Audit Logs', icon: FileText, roles: ['super_admin', 'admin'] },
+    { path: '/admin/reports', label: 'Reports', icon: Building2, roles: ['super_admin', 'admin'] },
     { path: '/admin/chat', label: 'AI Assistant', icon: MessageSquare, roles: ['super_admin', 'admin', 'manager', 'staff'] },
 
     // ── Staff shortcuts (shown when staff visits admin layout) ──

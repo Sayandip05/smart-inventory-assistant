@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
@@ -29,7 +30,22 @@ from app.api.schemas.auth_schemas import (
     RefreshTokenRequest,
     PasswordChangeRequest,
     RoleUpdate,
+    VerifyEmailRequest,
+    PasswordResetConfirmRequest,
+    GoogleAuthRequest,
 )
+
+import secrets
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+import secrets
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import hashlib
+import jwt
 
 logger = logging.getLogger("smart_inventory.auth")
 
@@ -40,7 +56,106 @@ MAX_LOGIN_ATTEMPTS = settings.MAX_LOGIN_ATTEMPTS
 LOCKOUT_DURATION_MINUTES = settings.LOCKOUT_DURATION_MINUTES
 
 
+# ── Email & Token Helpers ─────────────────────────────────────────────────
+
+
+def _generate_verification_token(user_id: int, email: str) -> str:
+    """Generate a signed verification token for email verification."""
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "type": "email_verification",
+        "exp": datetime.now(timezone.utc) + timedelta(hours=24),
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def _generate_password_reset_token(user_id: int, email: str) -> str:
+    """Generate a signed token for password reset."""
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "type": "password_reset",
+        "exp": datetime.now(timezone.utc) + timedelta(hours=1),
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def _send_email(to_email: str, subject: str, html_content: str) -> bool:
+    """Send email via SMTP. Returns True if successful."""
+    smtp_host = os.getenv("SMTP_HOST", "")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_password = os.getenv("SMTP_PASSWORD", "")
+    from_email = os.getenv("SMTP_FROM_EMAIL", smtp_user)
+
+    if not smtp_host or not smtp_user:
+        logger.warning("SMTP not configured - email not sent")
+        return False
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["From"] = from_email
+        msg["To"] = to_email
+        msg["Subject"] = subject
+        msg.attach(MIMEText(html_content, "html"))
+
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.sendmail(from_email, to_email, msg.as_string())
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send email to {to_email}: {e}")
+        return False
+
+
+def _send_verification_email(user: User, request: Request) -> bool:
+    """Send email verification link to user."""
+    token = _generate_verification_token(user.id, user.email)
+    base_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    verify_link = f"{base_url}/verify-email?token={token}"
+
+    html = f"""
+    <html>
+        <body style="font-family: Arial, sans-serif; padding: 20px;">
+            <h2>Verify your email</h2>
+            <p>Click the button below to verify your email and activate your account:</p>
+            <a href="{verify_link}" style="background: #3B82F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 16px 0;">
+                Verify Email
+            </a>
+            <p style="color: #666; font-size: 14px;">This link expires in 24 hours.</p>
+            <p style="color: #999; font-size: 12px;">If you didn't create this account, please ignore this email.</p>
+        </body>
+    </html>
+    """
+    return _send_email(user.email, "Verify your email - InvIQ", html)
+
+
+def _send_password_reset_email(user: User) -> bool:
+    """Send password reset link to user."""
+    token = _generate_password_reset_token(user.id, user.email)
+    base_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    reset_link = f"{base_url}/reset-password?token={token}"
+
+    html = f"""
+    <html>
+        <body style="font-family: Arial, sans-serif; padding: 20px;">
+            <h2>Reset your password</h2>
+            <p>Click the button below to reset your password:</p>
+            <a href="{reset_link}" style="background: #3B82F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 16px 0;">
+                Reset Password
+            </a>
+            <p style="color: #666; font-size: 14px;">This link expires in 1 hour.</p>
+            <p style="color: #999; font-size: 12px;">If you didn't request a password reset, please ignore this email or contact support.</p>
+        </body>
+    </html>
+    """
+    return _send_email(user.email, "Reset your password - InvIQ", html)
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────
+
 
 def _user_dict(user: User) -> dict:
     """Standard user data payload reused across endpoints."""
@@ -65,6 +180,7 @@ def _get_client_ip(request: Request) -> str:
 
 
 # ── POST /register ─────────────────────────────────────────────────────────
+
 
 @router.post("/register", response_model=dict)
 @limiter.limit("3/minute")
@@ -108,6 +224,7 @@ def register(
 
 # ── POST /login ────────────────────────────────────────────────────────────
 
+
 @router.post("/login", response_model=dict)
 @limiter.limit(settings.RATE_LIMIT_AUTH)
 def login(
@@ -141,7 +258,9 @@ def login(
 
             if attempts_left <= 0:
                 # Lock the account
-                lock_until = datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+                lock_until = datetime.now(timezone.utc) + timedelta(
+                    minutes=LOCKOUT_DURATION_MINUTES
+                )
                 db.lock_user(user, lock_until)
 
                 audit = AuditService(db.db)
@@ -167,7 +286,12 @@ def login(
     db.record_login(user)
 
     access_token = create_access_token(
-        {"sub": user.id, "username": user.username, "role": user.role, "org_id": user.org_id}
+        {
+            "sub": user.id,
+            "username": user.username,
+            "role": user.role,
+            "org_id": user.org_id,
+        }
     )
     refresh_token = create_refresh_token({"sub": user.id, "username": user.username})
 
@@ -195,6 +319,7 @@ def login(
 
 
 # ── POST /logout ───────────────────────────────────────────────────────────
+
 
 @router.post("/logout", response_model=dict)
 def logout(
@@ -233,6 +358,7 @@ def logout(
 
 # ── POST /refresh ──────────────────────────────────────────────────────────
 
+
 @router.post("/refresh", response_model=dict)
 @limiter.limit("10/minute")
 def refresh_token(
@@ -242,7 +368,7 @@ def refresh_token(
     """
     Refresh access token. Implements token rotation:
     the old refresh token is blacklisted after use (one-time use only).
-    
+
     Accepts refresh_token in request body.
     """
     from app.infrastructure.cache.token_blacklist import (
@@ -250,15 +376,19 @@ def refresh_token(
         is_token_blacklisted,
     )
     import json
-    
+
     # Parse request body manually to get refresh_token
     try:
-        body = json.loads(request._body.decode()) if hasattr(request, '_body') and request._body else {}
+        body = (
+            json.loads(request._body.decode())
+            if hasattr(request, "_body") and request._body
+            else {}
+        )
     except:
         body = {}
-    
-    refresh_token_str = body.get('refresh_token') if body else None
-    
+
+    refresh_token_str = body.get("refresh_token") if body else None
+
     if not refresh_token_str:
         raise AuthenticationError("refresh_token is required")
 
@@ -279,9 +409,16 @@ def refresh_token(
     bl_refresh(refresh_token_str)
 
     access_token = create_access_token(
-        {"sub": user.id, "username": user.username, "role": user.role, "org_id": user.org_id}
+        {
+            "sub": user.id,
+            "username": user.username,
+            "role": user.role,
+            "org_id": user.org_id,
+        }
     )
-    new_refresh_token = create_refresh_token({"sub": user.id, "username": user.username})
+    new_refresh_token = create_refresh_token(
+        {"sub": user.id, "username": user.username}
+    )
 
     return {
         "success": True,
@@ -296,6 +433,7 @@ def refresh_token(
 
 # ── GET /me ────────────────────────────────────────────────────────────────
 
+
 @router.get("/me", response_model=dict)
 def get_current_user_info(current_user: User = Depends(get_current_user)):
     return {
@@ -305,6 +443,7 @@ def get_current_user_info(current_user: User = Depends(get_current_user)):
 
 
 # ── PATCH /me ──────────────────────────────────────────────────────────────
+
 
 @router.patch("/me", response_model=dict)
 def update_my_profile(
@@ -352,6 +491,7 @@ def update_my_profile(
 
 # ── POST /change-password ─────────────────────────────────────────────────
 
+
 @router.post("/change-password", response_model=dict)
 def change_password(
     request_body: PasswordChangeRequest,
@@ -383,6 +523,7 @@ def change_password(
 
 
 # ── GET /users ─────────────────────────────────────────────────────────────
+
 
 @router.get("/users", response_model=dict)
 def list_users(
@@ -416,6 +557,7 @@ def list_users(
 
 # ── GET /users/{user_id} ──────────────────────────────────────────────────
 
+
 @router.get("/users/{user_id}", response_model=dict)
 def get_user_detail(
     user_id: int,
@@ -433,6 +575,7 @@ def get_user_detail(
 
 
 # ── PUT /users/{user_id}/role ─────────────────────────────────────────────
+
 
 @router.put("/users/{user_id}/role", response_model=dict)
 def update_user_role(
@@ -461,7 +604,11 @@ def update_user_role(
         resource_type="user",
         resource_id=str(user.id),
         user_id=current_user.id,
-        details={"target_user": user.username, "old_role": old_role, "new_role": user.role},
+        details={
+            "target_user": user.username,
+            "old_role": old_role,
+            "new_role": user.role,
+        },
         ip_address=_get_client_ip(request),
     )
 
@@ -473,6 +620,7 @@ def update_user_role(
 
 
 # ── PUT /users/{user_id}/activate ─────────────────────────────────────────
+
 
 @router.put("/users/{user_id}/activate", response_model=dict)
 def activate_user(
@@ -507,6 +655,7 @@ def activate_user(
 
 
 # ── PUT /users/{user_id}/deactivate ───────────────────────────────────────
+
 
 @router.put("/users/{user_id}/deactivate", response_model=dict)
 def deactivate_user(
@@ -544,6 +693,7 @@ def deactivate_user(
 
 
 # ── POST /users/{user_id}/reset-password ──────────────────────────────────
+
 
 @router.post("/users/{user_id}/reset-password", response_model=dict)
 def admin_reset_password(
@@ -583,6 +733,7 @@ def admin_reset_password(
 
 # ── DELETE /users/{user_id} ───────────────────────────────────────────────
 
+
 @router.delete("/users/{user_id}", response_model=dict)
 def delete_user(
     user_id: int,
@@ -616,3 +767,296 @@ def delete_user(
         "success": True,
         "message": f"User {deleted_username} deleted",
     }
+
+
+# ── POST /request-password-reset ────────────────────────────────────────────
+
+
+@router.post("/request-password-reset", response_model=dict)
+@limiter.limit("3/minute")
+def request_password_reset(
+    request: Request,
+    request_body: dict,
+    db: Session = Depends(get_user_repo),
+):
+    """Request a password reset link to be sent to user's email."""
+    email = request_body.get("email")
+    if not email:
+        raise ValidationError("Email is required")
+
+    user = db.get_by_email(email)
+
+    # Always return success to prevent email enumeration
+    # If user exists, send reset email; otherwise do nothing
+    if user:
+        _send_password_reset_email(user)
+
+        audit = AuditService(db.db)
+        audit.log(
+            username=user.username,
+            action="PASSWORD_RESET_REQUESTED",
+            resource_type="user",
+            resource_id=str(user.id),
+            user_id=user.id,
+            details={"email": email},
+            ip_address=_get_client_ip(request),
+        )
+
+    # Return same message whether user exists or not
+    return {
+        "success": True,
+        "message": "If an account exists with this email, a password reset link has been sent.",
+    }
+
+
+# ── POST /reset-password ───────────────────────────────────────────────────
+
+
+@router.post("/reset-password", response_model=dict)
+@limiter.limit("5/minute")
+def reset_password(
+    request: Request,
+    request_body: PasswordResetConfirmRequest,
+    db: Session = Depends(get_user_repo),
+):
+    """Reset password using the token from email."""
+    try:
+        payload = jwt.decode(
+            request_body.token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+        )
+    except jwt.ExpiredSignatureError:
+        raise AuthenticationError("Password reset token has expired")
+    except jwt.InvalidTokenError:
+        raise AuthenticationError("Invalid password reset token")
+
+    if payload.get("type") != "password_reset":
+        raise AuthenticationError("Invalid token type")
+
+    user_id = payload.get("sub")
+    user = db.get_by_id(user_id)
+
+    if not user:
+        raise NotFoundError("User", user_id)
+
+    # Verify email matches
+    if user.email != payload.get("email"):
+        raise AuthenticationError("Token does not match user email")
+
+    # Update password
+    user.hashed_password = hash_password(request_body.new_password)
+    user.login_attempts = 0
+    user.locked_until = None
+    db.update(user)
+
+    # Audit log
+    audit = AuditService(db.db)
+    audit.log(
+        username=user.username,
+        action="PASSWORD_RESET_COMPLETED",
+        resource_type="user",
+        resource_id=str(user.id),
+        user_id=user.id,
+        ip_address=_get_client_ip(request),
+    )
+
+    return {
+        "success": True,
+        "message": "Password has been reset successfully. Please login with your new password.",
+    }
+
+
+# ── POST /verify-email ─────────────────────────────────────────────────────
+
+
+@router.post("/verify-email", response_model=dict)
+def verify_email(
+    request: Request,
+    request_body: VerifyEmailRequest,
+    db: Session = Depends(get_user_repo),
+):
+    """Verify user's email using the token from the verification email."""
+    try:
+        payload = jwt.decode(
+            request_body.token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+        )
+    except jwt.ExpiredSignatureError:
+        raise AuthenticationError("Email verification token has expired")
+    except jwt.InvalidTokenError:
+        raise AuthenticationError("Invalid email verification token")
+
+    if payload.get("type") != "email_verification":
+        raise AuthenticationError("Invalid token type")
+
+    user_id = payload.get("sub")
+    user = db.get_by_id(user_id)
+
+    if not user:
+        raise NotFoundError("User", user_id)
+
+    if user.is_verified:
+        return {
+            "success": True,
+            "message": "Email is already verified",
+        }
+
+    # Verify email matches
+    if user.email != payload.get("email"):
+        raise AuthenticationError("Token does not match user email")
+
+    # Mark as verified
+    user.is_verified = True
+    user.is_active = True  # Auto-activate after verification
+    db.update(user)
+
+    # Audit log
+    audit = AuditService(db.db)
+    audit.log(
+        username=user.username,
+        action="EMAIL_VERIFIED",
+        resource_type="user",
+        resource_id=str(user.id),
+        user_id=user.id,
+        ip_address=_get_client_ip(request),
+    )
+
+    return {
+        "success": True,
+        "message": "Email verified successfully. Your account is now active.",
+    }
+
+
+# ── POST /google-auth ──────────────────────────────────────────────────────
+
+
+@router.post("/google-auth", response_model=dict)
+@limiter.limit("10/minute")
+def google_auth(
+    request: Request,
+    request_body: GoogleAuthRequest,
+    db: Session = Depends(get_user_repo),
+):
+    """Authenticate or register user via Google OAuth."""
+    import requests
+
+    GOOGLE_VERIFY_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
+
+    try:
+        # Verify the ID token with Google
+        response = requests.get(
+            GOOGLE_VERIFY_URL,
+            headers={"Authorization": f"Bearer {request_body.id_token}"},
+            timeout=10,
+        )
+
+        if response.status_code != 200:
+            raise AuthenticationError("Invalid Google ID token")
+
+        google_user = response.json()
+        google_email = google_user.get("email")
+        google_name = google_user.get("name", "")
+
+        if not google_email:
+            raise AuthenticationError("Google account has no email")
+
+        # Check if user exists
+        user = db.get_by_email(google_email)
+
+        if user:
+            # Existing user - log them in
+            if not user.is_active:
+                raise AuthenticationError("User account is disabled")
+
+            db.record_login(user)
+
+            access_token = create_access_token(
+                {
+                    "sub": user.id,
+                    "username": user.username,
+                    "role": user.role,
+                    "org_id": user.org_id,
+                }
+            )
+            refresh_token = create_refresh_token(
+                {"sub": user.id, "username": user.username}
+            )
+
+            audit = AuditService(db.db)
+            audit.log(
+                username=user.username,
+                action="GOOGLE_LOGIN",
+                resource_type="user",
+                resource_id=str(user.id),
+                user_id=user.id,
+                ip_address=_get_client_ip(request),
+            )
+
+            return {
+                "success": True,
+                "message": "Login successful",
+                "data": {
+                    "access_token": access_token,
+                    "refresh_token": refresh_token,
+                    "token_type": "bearer",
+                    "user": _user_dict(user),
+                },
+            }
+
+        # New user - create account (auto-registered)
+        # Generate a unique username from email
+        base_username = google_email.split("@")[0]
+        username = base_username
+        counter = 1
+        while db.get_by_username(username):
+            username = f"{base_username}{counter}"
+            counter += 1
+
+        # Create user with Google OAuth flag
+        user = db.create(
+            email=google_email,
+            username=username,
+            password=hash_password(secrets.token_urlsafe(32)),  # Random password
+            full_name=google_name,
+            role="staff",  # Default role for self-registered users
+        )
+
+        user.is_verified = True
+        user.is_active = True
+        db.update(user)
+
+        access_token = create_access_token(
+            {
+                "sub": user.id,
+                "username": user.username,
+                "role": user.role,
+                "org_id": user.org_id,
+            }
+        )
+        refresh_token = create_refresh_token(
+            {"sub": user.id, "username": user.username}
+        )
+
+        audit = AuditService(db.db)
+        audit.log(
+            username=user.username,
+            action="GOOGLE_REGISTER",
+            resource_type="user",
+            resource_id=str(user.id),
+            user_id=user.id,
+            details={"email": google_email},
+            ip_address=_get_client_ip(request),
+        )
+
+        return {
+            "success": True,
+            "message": "Account created successfully via Google",
+            "data": {
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_type": "bearer",
+                "user": _user_dict(user),
+            },
+        }
+
+    except requests.RequestException as e:
+        logger.error(f"Google OAuth error: {e}")
+        raise AuthenticationError("Failed to verify Google account")

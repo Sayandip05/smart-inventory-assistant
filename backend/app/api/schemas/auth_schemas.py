@@ -24,12 +24,14 @@ class UserUpdate(BaseModel):
 
 class UserProfileUpdate(BaseModel):
     """Used by PATCH /auth/me — users update their own profile."""
+
     email: Optional[EmailStr] = None
     full_name: Optional[str] = Field(None, max_length=200)
 
 
 class AdminPasswordReset(BaseModel):
     """Admin resets another user's password."""
+
     new_password: str = Field(..., min_length=8, max_length=100)
 
 
@@ -77,3 +79,16 @@ class PasswordChangeRequest(BaseModel):
 
 class RoleUpdate(BaseModel):
     role: str = Field(..., pattern="^(admin|manager|staff|viewer)$")
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str
+    new_password: str = Field(..., min_length=8, max_length=100)
+
+
+class GoogleAuthRequest(BaseModel):
+    id_token: str
