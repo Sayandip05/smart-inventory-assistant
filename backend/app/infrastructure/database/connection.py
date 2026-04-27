@@ -26,29 +26,17 @@ if not settings.DATABASE_URL:
     )
 
 DATABASE_URL = settings.DATABASE_URL
-is_sqlite = DATABASE_URL.startswith("sqlite")
 
-if is_sqlite:
-    logger.info("Database: SQLite (development mode)")
-else:
-    logger.info("Database: PostgreSQL (production mode)")
+logger.info("Database: PostgreSQL")
 
 # ── Engine — connection pool optimized for production ─────────────────────
 
-if is_sqlite:
-    # SQLite-specific settings (no connection pooling needed)
-    engine = create_engine(
-        DATABASE_URL,
-        connect_args={"check_same_thread": False},
-    )
-else:
-    # PostgreSQL production settings
-    engine = create_engine(
-        DATABASE_URL,
-        pool_size=5,
-        max_overflow=10,
-        pool_pre_ping=True,  # auto-reconnect on stale connections
-    )
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=5,
+    max_overflow=10,
+    pool_pre_ping=True,  # auto-reconnect on stale connections
+)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
