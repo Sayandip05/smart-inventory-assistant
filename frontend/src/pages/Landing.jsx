@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Sparkles, Search, Bell, Download, RefreshCw, Plus, ChevronDown, ArrowUpRight, ArrowDownRight, MapPin, Box, Layers, AlertTriangle, Maximize2, Check, ArrowLeft, ArrowRight, Phone, TrendingUp, Play, HelpCircle, Star, Activity, Zap, Network, LineChart, Lock, Globe, PanelLeftClose, Ship, Truck, CreditCard, Calendar, Clock, LayoutDashboard, BarChart3, Users } from 'lucide-react';
+import { Sparkles, Search, Download, Plus, ChevronDown, ArrowUpRight, ArrowDownRight, MapPin, Box, Layers, Check, ArrowLeft, ArrowRight, Phone, TrendingUp, Play, HelpCircle, Star, Activity, Zap, Network, LineChart, Lock, Globe, PanelLeftClose, Ship, Truck, CreditCard, Calendar, Clock, LayoutDashboard, BarChart3, Users, Menu, X } from 'lucide-react';
 
 const LogoIcon = () => (
   <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -16,6 +16,7 @@ const LogoIcon = () => (
 export default function Landing() {
   const [openFaq, setOpenFaq] = React.useState(0);
   const [currentTestimonial, setCurrentTestimonial] = React.useState(0);
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
   const testimonials = [
     {
@@ -86,7 +87,7 @@ export default function Landing() {
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-24">
         {/* Navbar */}
-        <nav className="flex items-center justify-between px-6 py-3 bg-white/80 backdrop-blur-md rounded-full border border-slate-200/60 shadow-sm mb-20">
+        <nav className="flex items-center justify-between px-4 sm:px-6 py-3 bg-white/80 backdrop-blur-md rounded-full border border-slate-200/60 shadow-sm mb-12 md:mb-20">
           <div className="flex items-center gap-2">
             <LogoIcon />
             <span className="font-semibold text-lg tracking-tight">Inviq</span>
@@ -102,49 +103,76 @@ export default function Landing() {
               </button>
             ))}
           </div>
-          <div>
+          <div className="flex items-center gap-3">
             <button 
               onClick={() => window.location.href = '/signup'} 
-              className="bg-black text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-slate-800 transition-colors"
+              className="hidden md:block bg-black text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-slate-800 transition-colors"
             >
               Sign up
+            </button>
+            <button
+              className="md:hidden p-2 rounded-full hover:bg-slate-100 transition-colors"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </nav>
 
+        {/* Mobile Menu Dropdown */}
+        {mobileMenuOpen && (
+          <div className="md:hidden fixed inset-x-4 top-20 z-50 bg-white rounded-3xl border border-slate-200 shadow-2xl p-6 flex flex-col gap-4">
+            {['features', 'process', 'pricing', 'faq', 'customers'].map((id) => (
+              <button
+                key={id}
+                onClick={() => { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); setMobileMenuOpen(false); }}
+                className="text-left py-2 text-slate-700 font-medium capitalize border-b border-slate-100 last:border-0"
+              >
+                {id === 'faq' ? 'FAQ' : id.charAt(0).toUpperCase() + id.slice(1)}
+              </button>
+            ))}
+            <button
+              onClick={() => window.location.href = '/signup'}
+              className="mt-2 w-full bg-black text-white py-3 rounded-full text-sm font-medium hover:bg-slate-800 transition-colors"
+            >
+              Sign up
+            </button>
+          </div>
+        )}
+
         {/* Hero Section */}
-        <div className="text-center max-w-4xl mx-auto mb-20">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-sm font-medium mb-8">
+        <div className="text-center max-w-4xl mx-auto mb-12 md:mb-20 px-2">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-sm font-medium mb-6 md:mb-8">
             <Sparkles className="w-4 h-4" />
             Trusted by 5,000+ teams
           </div>
-          <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-slate-900 mb-6 leading-[1.1]">
+          <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tight text-slate-900 mb-4 md:mb-6 leading-[1.1]">
             Smarter Inventory,<br />Greater Precision
           </h1>
-          <p className="text-lg md:text-xl text-slate-500 mb-10 max-w-2xl mx-auto leading-relaxed">
+          <p className="text-base md:text-xl text-slate-500 mb-8 md:mb-10 max-w-2xl mx-auto leading-relaxed">
             Optimize stock levels, prevent shortages, cut excess inventory, and simplify your inventory management effortlessly.
           </p>
-          <div className="flex items-center justify-center gap-4">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <button 
               onClick={() => window.location.href = '/signup'}
-              className="bg-blue-600 text-white px-8 py-3.5 rounded-full text-base font-medium hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20"
+              className="w-full sm:w-auto bg-blue-600 text-white px-8 py-3.5 rounded-full text-base font-medium hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20"
             >
               Get started
             </button>
-            <button className="bg-white text-slate-700 border border-slate-200 px-8 py-3.5 rounded-full text-base font-medium hover:bg-slate-50 transition-colors shadow-sm">
+            <button className="w-full sm:w-auto bg-white text-slate-700 border border-slate-200 px-8 py-3.5 rounded-full text-base font-medium hover:bg-slate-50 transition-colors shadow-sm">
               Contact Us
             </button>
           </div>
         </div>
 
-        {/* Dashboard Mockup */}
-        <div className="relative mx-auto max-w-6xl">
+        {/* Dashboard Mockup - decorative only */}
+        <div className="relative mx-auto max-w-6xl pointer-events-none select-none cursor-default">
           {/* Fade out gradient at the bottom */}
-          <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#FAFAFA] to-transparent z-20 pointer-events-none" />
+          <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#FAFAFA] to-transparent z-20" />
           
-          <div className="bg-white rounded-3xl border border-slate-200/60 shadow-2xl overflow-hidden flex h-[700px]">
-            {/* Sidebar */}
-            <div className="w-64 border-r border-slate-100 flex flex-col bg-white shrink-0">
+          <div className="bg-white rounded-2xl md:rounded-3xl border border-slate-200/60 shadow-2xl overflow-hidden flex h-[420px] sm:h-[520px] md:h-[700px]">
+            {/* Sidebar - hidden on mobile */}
+            <div className="hidden sm:flex w-52 md:w-64 border-r border-slate-100 flex-col bg-white shrink-0">
               <div className="p-6 flex items-center gap-2">
                 <LogoIcon />
                 <span className="font-bold text-xl tracking-tight text-slate-900">Inviq</span>
@@ -153,7 +181,7 @@ export default function Landing() {
                 </button>
               </div>
               
-              <div className="flex-1 px-4 py-2 space-y-1 overflow-y-auto">
+              <div className="flex-1 px-4 py-2 space-y-1 overflow-hidden">
                 <button className="w-full flex items-center gap-3 px-3 py-2.5 bg-blue-50 text-blue-700 rounded-xl font-medium text-sm border border-blue-100/50">
                   <LayoutDashboard className="w-5 h-5" />
                   Dashboard
@@ -216,10 +244,10 @@ export default function Landing() {
                 </div>
               </div>
 
-              {/* Dashboard Content Scrollable */}
-              <div className="flex-1 overflow-y-auto p-8">
+              {/* Dashboard Content */}
+              <div className="flex-1 overflow-hidden p-3 sm:p-5 md:p-8">
                 {/* 4 Stat Cards */}
-                <div className="grid grid-cols-4 gap-6 mb-6">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 mb-3 md:mb-6">
                   {/* Card 1 */}
                   <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
                     <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center mb-4">
@@ -279,9 +307,9 @@ export default function Landing() {
                 </div>
 
                 {/* Charts Row */}
-                <div className="grid grid-cols-3 gap-6 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-6 mb-3 md:mb-6">
                   {/* Line Chart */}
-                  <div className="col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                  <div className="col-span-1 md:col-span-2 bg-white p-4 md:p-6 rounded-xl md:rounded-2xl border border-slate-200 shadow-sm">
                     <div className="flex items-center justify-between mb-6">
                       <h3 className="font-bold text-slate-900">Shipment Analytics</h3>
                       <div className="flex items-center gap-2 px-3 py-1.5 border border-slate-200 rounded-lg text-sm text-slate-600 cursor-pointer">
@@ -348,7 +376,7 @@ export default function Landing() {
                   </div>
 
                   {/* Bar Chart */}
-                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                  <div className="bg-white p-4 md:p-6 rounded-xl md:rounded-2xl border border-slate-200 shadow-sm">
                     <div className="flex items-center justify-between mb-6">
                       <h3 className="font-bold text-slate-900">Cashflow Stat</h3>
                       <button className="flex items-center gap-2 px-3 py-1.5 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50">
@@ -388,64 +416,6 @@ export default function Landing() {
                   </div>
                 </div>
 
-                {/* Bottom Row */}
-                <div className="grid grid-cols-3 gap-6">
-                  <div className="col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
-                      <div className="flex gap-6 text-sm">
-                        <button className="font-semibold text-blue-600 border-b-2 border-blue-600 pb-4 -mb-4">Followed Shipment</button>
-                        <button className="font-medium text-slate-500 hover:text-slate-900 pb-4 -mb-4">Delay Shipment</button>
-                        <button className="font-medium text-slate-500 hover:text-slate-900 pb-4 -mb-4">Last update</button>
-                      </div>
-                      <div className="flex items-center gap-2 px-3 py-1.5 border border-slate-200 rounded-lg text-sm text-slate-600 cursor-pointer">
-                        <Calendar className="w-4 h-4" />
-                        Monthly
-                        <ChevronDown className="w-4 h-4 ml-1" />
-                      </div>
-                    </div>
-                    
-                    {/* Shipment Item */}
-                    <div className="border border-slate-200 rounded-xl p-4 flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className="font-bold text-slate-900">DEMO-C548783</span>
-                          <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100/50">
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                            In Transit
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-4 text-xs text-slate-500">
-                          <div className="flex items-center gap-1">
-                            <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                            Clarksville, US - Centere, US
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5 text-slate-400" />
-                            ETA: Nov 15 - Dec 20
-                          </div>
-                        </div>
-                      </div>
-                      <div className="w-16 h-12 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center">
-                        <Truck className="w-6 h-6 text-slate-400" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
-                    <h3 className="font-bold text-slate-900 mb-4">Map view</h3>
-                    <div className="flex-1 bg-[#F8FAFC] rounded-xl relative overflow-hidden min-h-[150px] border border-slate-200">
-                      {/* Map background pattern */}
-                      <div className="absolute inset-0 opacity-30" style={{ backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', backgroundSize: '12px 12px' }} />
-                      {/* Route line */}
-                      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-                        <path d="M 20 80 L 40 60 L 60 70 L 80 30" fill="none" stroke="#3B82F6" strokeWidth="2" strokeDasharray="4 4" />
-                        <circle cx="20" cy="80" r="4" fill="#10B981" />
-                        <circle cx="80" cy="30" r="4" fill="#3B82F6" />
-                        <circle cx="80" cy="30" r="8" fill="none" stroke="#3B82F6" strokeWidth="1" opacity="0.5" />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
           </div>
