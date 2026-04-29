@@ -52,10 +52,10 @@ class Settings:
     LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1024"))
     
     # ── LangSmith (Observability) ─────────────────────────────────────
-    LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY")
-    LANGCHAIN_PROJECT = os.getenv("LANGCHAIN_PROJECT", "smart-inventory-assistant")
-    LANGCHAIN_TRACING_V2 = os.getenv("LANGCHAIN_TRACING_V2", "false")
-    LANGCHAIN_ENDPOINT = os.getenv("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com")
+    LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY")
+    LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "InvIQ")
+    LANGSMITH_TRACING = os.getenv("LANGSMITH_TRACING", "false")
+    LANGSMITH_ENDPOINT = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
     
     # ── ChromaDB (Vector Store) ───────────────────────────────────────
     CHROMADB_ENABLED = os.getenv("CHROMADB_ENABLED", "true").lower() == "true"
@@ -74,16 +74,17 @@ class Settings:
     LOCKOUT_DURATION_MINUTES = int(os.getenv("LOCKOUT_DURATION_MINUTES", "15"))
 
     # ── Super Admin (platform owner) ────────────────────────────────
-    SUPER_ADMIN_EMAIL = os.getenv("SUPER_ADMIN_EMAIL", "sayandip@inviq.io")
+    SUPER_ADMIN_EMAIL = os.getenv("SUPER_ADMIN_EMAIL", "admin@example.com")
 
     # ── Admin Seed (first startup only) ───────────────────────────────
     ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@inventory.local")
     ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
-    ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+    ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
     ADMIN_FULL_NAME = os.getenv("ADMIN_FULL_NAME", "System Administrator")
 
-    # ── Redis (Caching) ───────────────────────────────────────────────
-    REDIS_URL = os.getenv("REDIS_URL", "")  # e.g. redis://localhost:6379 or Upstash
+    # ── Upstash Redis (Caching) ───────────────────────────────────────
+    UPSTASH_REDIS_REST_URL = os.getenv("UPSTASH_REDIS_REST_URL", "")
+    UPSTASH_REDIS_REST_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN", "")
     REDIS_ENABLED = os.getenv("REDIS_ENABLED", "true").lower() == "true"
 
     # ── Rate Limiting ─────────────────────────────────────────────────
@@ -118,9 +119,9 @@ def _validate_production_config():
                 "FATAL: SECRET_KEY is still the insecure default! "
                 "Generate a secure key with: openssl rand -hex 32"
             )
-        if settings.ADMIN_PASSWORD == "admin123":
+        if settings.ADMIN_PASSWORD == "":
             logger.warning(
-                "⚠️  ADMIN_PASSWORD is the default 'admin123'. "
+                "⚠️  ADMIN_PASSWORD is empty. "
                 "Set ADMIN_PASSWORD env var to a strong password for production."
             )
     elif settings.SECRET_KEY == "your-super-secret-key-change-in-production":
@@ -134,16 +135,18 @@ _validate_production_config()
 
 
 def configure_langsmith():
-    if settings.LANGCHAIN_API_KEY:
-        os.environ["LANGCHAIN_TRACING_V2"] = "true"
-        os.environ["LANGCHAIN_API_KEY"] = settings.LANGCHAIN_API_KEY
-        os.environ["LANGCHAIN_PROJECT"] = settings.LANGCHAIN_PROJECT
-        os.environ["LANGCHAIN_ENDPOINT"] = settings.LANGCHAIN_ENDPOINT
+    """Configure LangSmith observability using LANGSMITH_* environment variables."""
+    if settings.LANGSMITH_API_KEY:
+        os.environ["LANGSMITH_API_KEY"] = settings.LANGSMITH_API_KEY
+        os.environ["LANGSMITH_PROJECT"] = settings.LANGSMITH_PROJECT
+        os.environ["LANGSMITH_TRACING"] = "true"
+        os.environ["LANGSMITH_ENDPOINT"] = settings.LANGSMITH_ENDPOINT
         logger.info(
-            "LangSmith tracing enabled → project: %s", settings.LANGCHAIN_PROJECT
+            "✅ LangSmith tracing enabled → project: %s", settings.LANGSMITH_PROJECT
         )
     else:
-        os.environ["LANGCHAIN_TRACING_V2"] = "false"
+        os.environ["LANGSMITH_TRACING"] = "false"
+        logger.info("LangSmith tracing disabled — LANGSMITH_API_KEY not set")
 
 
 configure_langsmith()

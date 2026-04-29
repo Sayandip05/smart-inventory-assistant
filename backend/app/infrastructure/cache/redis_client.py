@@ -1,8 +1,11 @@
 """
-Redis client — connection pool with graceful fallback.
+Upstash Redis client — REST HTTP backend with graceful fallback.
 
 Layer: Infrastructure
-Uses a connection pool (max 20 connections) for efficient reuse.
+Uses the upstash-redis Python SDK which talks to Upstash over HTTPS (REST),
+making it compatible with serverless / edge environments without a persistent
+TCP connection.
+
 When Redis is unavailable the app continues without caching — all callers
 check is_redis_available() or receive None from get_redis().
 
@@ -14,71 +17,63 @@ Key namespaces used by this app:
 """
 
 import logging
-import redis
-from redis import ConnectionPool
-from typing import Any, Optional
 import json
+from typing import Any, Optional
 
 from app.core.config import settings
 
 logger = logging.getLogger("smart_inventory.redis")
 
-_pool: ConnectionPool | None = None
-_redis_client: redis.Redis | None = None
+# ── Module-level singleton ───────────────────────────────────────────────────
+_redis_client = None          # upstash_redis.Redis instance or None
 _redis_available: bool = False
 
 
-def _safe_url_log(url: str) -> str:
-    """Mask password in Redis URL for safe logging."""
-    if "@" in url:
-        return "redis://***@" + url.split("@")[-1]
-    return url
-
-
-def _build_pool() -> ConnectionPool:
-    """Build a Redis connection pool with sensible production defaults."""
-    return redis.ConnectionPool.from_url(
-        settings.REDIS_URL,
-        max_connections=20,
-        decode_responses=True,
-        socket_connect_timeout=3,
-        socket_timeout=3,
-        retry_on_timeout=True,
-        health_check_interval=30,   # background ping every 30s
+def _build_client():
+    """Instantiate an Upstash Redis client from env settings."""
+    from upstash_redis import Redis  # lazy import — only fails if pkg missing
+    return Redis(
+        url=settings.UPSTASH_REDIS_REST_URL,
+        token=settings.UPSTASH_REDIS_REST_TOKEN,
     )
 
 
-def get_redis() -> redis.Redis | None:
+def get_redis():
     """
-    Get the singleton Redis client backed by a connection pool.
+    Get the singleton Upstash Redis client.
     Returns None if Redis is unavailable or not configured.
     """
-    global _pool, _redis_client, _redis_available
+    global _redis_client, _redis_available
 
     if _redis_client is not None:
         return _redis_client if _redis_available else None
 
-    if not settings.REDIS_URL:
-        logger.info("REDIS_URL not set — running without Redis (in-memory fallback active)")
+    if not settings.UPSTASH_REDIS_REST_URL or not settings.UPSTASH_REDIS_REST_TOKEN:
+        logger.info(
+            "UPSTASH_REDIS_REST_URL / TOKEN not set — running without Redis (in-memory fallback active)"
+        )
         _redis_available = False
         return None
 
     try:
-        _pool = _build_pool()
-        _redis_client = redis.Redis(connection_pool=_pool)
+        _redis_client = _build_client()
+        # Ping to verify connectivity
         _redis_client.ping()
         _redis_available = True
-        logger.info("Redis connected via pool → %s", _safe_url_log(settings.REDIS_URL))
+        logger.info(
+            "Upstash Redis connected → %s",
+            settings.UPSTASH_REDIS_REST_URL,
+        )
         return _redis_client
     except Exception as e:
-        logger.warning("Redis connection failed — running without cache: %s", e)
+        logger.warning("Upstash Redis connection failed — running without cache: %s", e)
         _redis_available = False
         _redis_client = None
         return None
 
 
 def is_redis_available() -> bool:
-    """Ping Redis to confirm it's still healthy."""
+    """Ping Upstash Redis to confirm it's still healthy."""
     global _redis_available
     if _redis_available and _redis_client:
         try:
@@ -86,25 +81,19 @@ def is_redis_available() -> bool:
             return True
         except Exception:
             _redis_available = False
-            logger.warning("Redis health check failed — marking unavailable")
+            logger.warning("Upstash Redis health check failed — marking unavailable")
     return False
 
 
 def close_redis() -> None:
-    """Graceful shutdown — disconnect all pool connections."""
-    global _pool, _redis_client, _redis_available
-    if _pool:
-        try:
-            _pool.disconnect()
-            logger.info("Redis connection pool closed")
-        except Exception:
-            pass
-    _pool = None
+    """Reset singleton state (Upstash REST client has no persistent pool to close)."""
+    global _redis_client, _redis_available
     _redis_client = None
     _redis_available = False
+    logger.info("Upstash Redis client reference cleared")
 
 
-# ── Typed helpers (used by cache_service, token_blacklist, login_attempts) ─
+# ── Typed helpers (used by cache_service, token_blacklist, login_attempts) ───
 
 def redis_get_json(key: str) -> Optional[Any]:
     """Get a JSON-deserialized value from Redis. Returns None on any failure."""
@@ -113,7 +102,12 @@ def redis_get_json(key: str) -> Optional[Any]:
         return None
     try:
         raw = r.get(key)
-        return json.loads(raw) if raw is not None else None
+        if raw is None:
+            return None
+        # upstash-redis already decodes strings; parse if it's a JSON string
+        if isinstance(raw, str):
+            return json.loads(raw)
+        return raw
     except Exception as e:
         logger.debug("redis_get_json failed key=%s: %s", key, e)
         return None
@@ -154,11 +148,11 @@ def redis_increment(key: str, ttl_seconds: int) -> int:
     if not r:
         return 0
     try:
-        pipe = r.pipeline()
-        pipe.incr(key)
-        pipe.expire(key, ttl_seconds, nx=True)   # nx=True: only set if not already set
-        results = pipe.execute()
-        return results[0]
+        count = r.incr(key)
+        # Only set TTL when the key is freshly created (count == 1)
+        if count == 1:
+            r.expire(key, ttl_seconds)
+        return count
     except Exception as e:
         logger.debug("redis_increment failed key=%s: %s", key, e)
         return 0

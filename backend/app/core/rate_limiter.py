@@ -52,12 +52,25 @@ def get_user_id_or_ip(request: Request) -> str:
 
 
 def _get_storage_uri() -> str:
-    """Use Redis for distributed rate limiting if available, else in-memory."""
-    if settings.REDIS_URL:
-        logger.info("Rate limiter: using Redis backend (distributed)")
-        return settings.REDIS_URL
+    """
+    Build a storage URI for slowapi.
+
+    Upstash exposes a standard Redis-compatible endpoint over TLS.
+    We derive the host from UPSTASH_REDIS_REST_URL and use the REST
+    token as the password so slowapi can do distributed rate-limiting.
+
+    Falls back to in-memory when Upstash credentials are absent.
+    """
+    url = settings.UPSTASH_REDIS_REST_URL
+    token = settings.UPSTASH_REDIS_REST_TOKEN
+    if url and token:
+        # REST URL is "https://host" — strip scheme to get hostname
+        host = url.replace("https://", "").replace("http://", "").rstrip("/")
+        redis_uri = f"rediss://:{token}@{host}:6379"
+        logger.info("Rate limiter: using Upstash Redis backend (distributed)")
+        return redis_uri
     logger.warning(
-        "Rate limiter: REDIS_URL not set — using in-memory (not shared across workers)"
+        "Rate limiter: Upstash credentials not set — using in-memory (not shared across workers)"
     )
     return "memory://"
 
