@@ -5,7 +5,12 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 
-from app.core.dependencies import get_user_repo, get_current_user, require_admin
+from app.core.dependencies import (
+    get_user_repo,
+    get_current_user,
+    require_admin,
+    get_db_session,
+)
 from app.core.config import settings
 from app.core.rate_limiter import limiter
 from app.core.security import (
@@ -34,11 +39,6 @@ from app.api.schemas.auth_schemas import (
     PasswordResetConfirmRequest,
     GoogleAuthRequest,
 )
-
-import secrets
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 import secrets
 import smtplib
@@ -86,14 +86,16 @@ def _send_email(to_email: str, subject: str, html_content: str) -> bool:
     if not settings.SMTP_ENABLED:
         logger.info("SMTP disabled - email not sent (to: %s)", to_email)
         return False
-    
+
     if not settings.SMTP_HOST or not settings.SMTP_USER:
         logger.warning("SMTP not configured - email not sent")
         return False
 
     try:
         msg = MIMEMultipart("alternative")
-        msg["From"] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_FROM_EMAIL or settings.SMTP_USER}>"
+        msg["From"] = (
+            f"{settings.SMTP_FROM_NAME} <{settings.SMTP_FROM_EMAIL or settings.SMTP_USER}>"
+        )
         msg["To"] = to_email
         msg["Subject"] = subject
         msg.attach(MIMEText(html_content, "html"))
@@ -104,7 +106,7 @@ def _send_email(to_email: str, subject: str, html_content: str) -> bool:
             server.sendmail(
                 settings.SMTP_FROM_EMAIL or settings.SMTP_USER,
                 to_email,
-                msg.as_string()
+                msg.as_string(),
             )
         logger.info("Email sent successfully to %s", to_email)
         return True
@@ -326,7 +328,7 @@ def login(
 def logout(
     request: Request,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_user_repo),
+    db: Session = Depends(get_db_session),
 ):
     """Blacklist the current access token (and optionally refresh token)."""
     from app.infrastructure.cache.token_blacklist import (

@@ -185,8 +185,9 @@ class RequisitionService:
 
                 if approved_qty > current_stock:
                     item = self.repo.get_item(req_item.item_id)
+                    item_label = item.name if item else f"item_id={req_item.item_id}"
                     stock_errors.append(
-                        f"{item.name}: requested {approved_qty}, available {current_stock}"
+                        f"{item_label}: requested {approved_qty}, available {current_stock}"
                     )
 
             if stock_errors:

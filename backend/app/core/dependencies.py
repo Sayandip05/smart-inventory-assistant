@@ -28,6 +28,7 @@ from app.infrastructure.database.models import User
 
 # ── Repository factories ───────────────────────────────────────────────────
 
+
 def get_inventory_repo(db: Session = Depends(get_db)) -> InventoryRepository:
     return InventoryRepository(db)
 
@@ -38,6 +39,11 @@ def get_requisition_repo(db: Session = Depends(get_db)) -> RequisitionRepository
 
 def get_user_repo(db: Session = Depends(get_db)) -> UserRepository:
     return UserRepository(db)
+
+
+def get_db_session(db: Session = Depends(get_db)) -> Session:
+    """Raw database session for direct DB operations."""
+    return db
 
 
 def get_inventory_service(
@@ -54,6 +60,7 @@ def get_requisition_service(
 
 
 # ── Authentication dependency (FastAPI tutorial pattern) ───────────────────
+
 
 def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
@@ -79,6 +86,7 @@ def get_current_user(
     try:
         # ── Check token blacklist (invalidated on logout) ──────────────
         from app.infrastructure.cache.token_blacklist import is_token_blacklisted
+
         if is_token_blacklisted(token):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -120,6 +128,7 @@ def get_current_user(
 
 # ── Active user shorthand ──────────────────────────────────────────────────
 
+
 def get_current_active_user(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> User:
@@ -131,8 +140,10 @@ def get_current_active_user(
 
 # ── Role-based access control ──────────────────────────────────────────────
 
+
 def require_role(required_role: str):
     """Factory that returns a dependency requiring minimum role level."""
+
     def role_checker(
         current_user: Annotated[User, Depends(get_current_user)],
     ) -> User:
@@ -142,6 +153,7 @@ def require_role(required_role: str):
                 detail=f"Insufficient permissions. Requires '{required_role}' role or higher.",
             )
         return current_user
+
     return role_checker
 
 
@@ -191,4 +203,3 @@ def require_vendor(
             detail="Vendor access required.",
         )
     return current_user
-

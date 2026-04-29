@@ -1,8 +1,9 @@
 import logging
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy import func
 from datetime import date
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 from app.infrastructure.database.models import Location, Item, InventoryTransaction
 from app.core.exceptions import DatabaseError, DuplicateError
@@ -90,6 +91,39 @@ class InventoryRepository:
             .order_by(InventoryTransaction.date.desc())
             .first()
         )
+
+    def get_latest_stocks_for_location(self, location_id: int) -> Dict[int, int]:
+        """
+        Single query: returns {item_id: closing_stock} for the latest transaction
+        of every item at the given location. Replaces N+1 queries with 1 query.
+        """
+        # Subquery: find the max date per item at this location
+        latest_date_sub = (
+            self.db.query(
+                InventoryTransaction.item_id,
+                func.max(InventoryTransaction.date).label("max_date"),
+            )
+            .filter(InventoryTransaction.location_id == location_id)
+            .group_by(InventoryTransaction.item_id)
+            .subquery()
+        )
+
+        # Join back to get the closing_stock of that latest row
+        rows = (
+            self.db.query(
+                InventoryTransaction.item_id,
+                InventoryTransaction.closing_stock,
+            )
+            .join(
+                latest_date_sub,
+                (InventoryTransaction.item_id == latest_date_sub.c.item_id)
+                & (InventoryTransaction.date == latest_date_sub.c.max_date),
+            )
+            .filter(InventoryTransaction.location_id == location_id)
+            .all()
+        )
+
+        return {row.item_id: row.closing_stock for row in rows}
 
     def create_transaction(self, flush_only: bool = False, **kwargs) -> InventoryTransaction:
         """

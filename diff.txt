@@ -1,0 +1,1418 @@
+﻿diff --git a/.env.example b/.env.example
+index b704893..0d35c18 100644
+--- a/.env.example
++++ b/.env.example
+@@ -64,20 +64,21 @@ LOCKOUT_DURATION_MINUTES=15
+ # ADMIN ACCOUNTS
+ # ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+ # Super Admin (platform owner)
+-SUPER_ADMIN_EMAIL=sayandip@inviq.io
++SUPER_ADMIN_EMAIL=admin@example.com
+ 
+ # Default Admin (created on first startup)
+ ADMIN_EMAIL=admin@inventory.local
+ ADMIN_USERNAME=admin
+-ADMIN_PASSWORD=admin123
++ADMIN_PASSWORD=
+ ADMIN_FULL_NAME=System Administrator
+ 
+ # ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+-# REDIS (Caching & Rate Limiting)
++# REDIS (Caching & Rate Limiting) - UPSTASH CLOUD
+ # ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
++# Get your Upstash Redis URL at: https://console.upstash.com/redis
++# Format: rediss://default:YOUR_PASSWORD@YOUR_ENDPOINT.upstash.io:6379
+ # Leave empty to run without Redis (in-memory fallback)
+-# Format: redis://localhost:6379 or redis://user:password@host:port
+-REDIS_URL=redis://localhost:6379
++REDIS_URL=
+ REDIS_ENABLED=true
+ 
+ # ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+diff --git a/backend/app/api/routes/admin.py b/backend/app/api/routes/admin.py
+index eb92fdd..bad6e44 100644
+--- a/backend/app/api/routes/admin.py
++++ b/backend/app/api/routes/admin.py
+@@ -7,7 +7,7 @@ access for the platform owner's dashboard.
+ 
+ import logging
+ from datetime import datetime, timezone, timedelta
+-from fastapi import APIRouter, Depends, Query
++from fastapi import APIRouter, Depends, Query, HTTPException
+ from sqlalchemy.orm import Session
+ from typing import Optional
+ 
+@@ -23,6 +23,7 @@ router = APIRouter(prefix="/admin", tags=["Admin Dashboard"])
+ 
+ # ΓöÇΓöÇ GET /admin/overview ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ 
++
+ @router.get("/overview", response_model=dict)
+ def get_platform_overview(
+     db: Session = Depends(get_db),
+@@ -88,6 +89,7 @@ def get_platform_overview(
+ 
+ # ΓöÇΓöÇ GET /admin/audit-logs ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ 
++
+ @router.get("/audit-logs", response_model=dict)
+ def get_audit_logs(
+     limit: int = Query(50, ge=1, le=500),
+@@ -136,6 +138,7 @@ def get_audit_logs(
+ 
+ # ΓöÇΓöÇ GET /admin/users/summary ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ 
++
+ @router.get("/users/summary", response_model=dict)
+ def get_users_summary(
+     db: Session = Depends(get_db),
+@@ -149,24 +152,28 @@ def get_users_summary(
+ 
+     users_data = []
+     for u in all_users:
+-        users_data.append({
+-            "id": u.id,
+-            "email": u.email,
+-            "username": u.username,
+-            "full_name": u.full_name,
+-            "role": u.role,
+-            "is_active": u.is_active,
+-            "is_verified": u.is_verified,
+-            "login_attempts": u.login_attempts or 0,
+-            "locked_until": str(u.locked_until) if u.locked_until else None,
+-            "last_login_at": str(u.last_login_at) if u.last_login_at else None,
+-            "created_at": str(u.created_at) if u.created_at else None,
+-            "updated_at": str(u.updated_at) if u.updated_at else None,
+-        })
++        users_data.append(
++            {
++                "id": u.id,
++                "email": u.email,
++                "username": u.username,
++                "full_name": u.full_name,
++                "role": u.role,
++                "is_active": u.is_active,
++                "is_verified": u.is_verified,
++                "login_attempts": u.login_attempts or 0,
++                "locked_until": str(u.locked_until) if u.locked_until else None,
++                "last_login_at": str(u.last_login_at) if u.last_login_at else None,
++                "created_at": str(u.created_at) if u.created_at else None,
++                "updated_at": str(u.updated_at) if u.updated_at else None,
++            }
++        )
+ 
+     # Identify concerns
+     locked_users = [u for u in users_data if u["locked_until"] is not None]
+-    never_logged_in = [u for u in users_data if u["last_login_at"] is None and u["role"] != "admin"]
++    never_logged_in = [
++        u for u in users_data if u["last_login_at"] is None and u["role"] != "admin"
++    ]
+ 
+     return {
+         "success": True,
+@@ -183,6 +190,7 @@ def get_users_summary(
+ 
+ # ΓöÇΓöÇ GET /admin/reports/generate ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ 
++
+ @router.get("/reports/generate")
+ def generate_pdf_report(
+     date_from: Optional[str] = Query(None, description="Start date YYYY-MM-DD"),
+@@ -202,17 +210,28 @@ def generate_pdf_report(
+     from io import BytesIO
+     from fastapi.responses import StreamingResponse
+     from app.infrastructure.database.models import (
+-        Location, Item, InventoryTransaction, Requisition
++        Location,
++        Item,
++        InventoryTransaction,
++        Requisition,
+     )
+ 
+     try:
+         from reportlab.lib.pagesizes import A4
+         from reportlab.lib import colors
+         from reportlab.lib.units import inch
+-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
++        from reportlab.platypus import (
++            SimpleDocTemplate,
++            Table,
++            TableStyle,
++            Paragraph,
++            Spacer,
++        )
+         from reportlab.lib.styles import getSampleStyleSheet
+     except ImportError:
+-        return {"success": False, "error": "reportlab is not installed on the server"}
++        raise HTTPException(
++            status_code=500, detail="reportlab is not installed on the server"
++        )
+ 
+     buffer = BytesIO()
+     doc = SimpleDocTemplate(buffer, pagesize=A4)
+@@ -221,10 +240,12 @@ def generate_pdf_report(
+ 
+     # Title
+     elements.append(Paragraph("InvIQ ΓÇö Inventory Report", styles["Title"]))
+-    elements.append(Paragraph(
+-        f"Generated by: {current_user.username} | Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+-        styles["Normal"],
+-    ))
++    elements.append(
++        Paragraph(
++            f"Generated by: {current_user.username} | Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
++            styles["Normal"],
++        )
++    )
+     elements.append(Spacer(1, 0.3 * inch))
+ 
+     # Stock health summary
+@@ -260,13 +281,17 @@ def generate_pdf_report(
+         ["Total Items", str(len(items))],
+     ]
+     health_table = Table(health_data, colWidths=[3 * inch, 1.5 * inch])
+-    health_table.setStyle(TableStyle([
+-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+-    ]))
++    health_table.setStyle(
++        TableStyle(
++            [
++                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
++                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
++                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
++                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
++                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
++            ]
++        )
++    )
+     elements.append(health_table)
+     elements.append(Spacer(1, 0.3 * inch))
+ 
+@@ -277,13 +302,17 @@ def generate_pdf_report(
+         for name, stock, min_s in critical_items[:15]:
+             ci_data.append([name, str(stock), str(min_s)])
+         ci_table = Table(ci_data, colWidths=[3 * inch, 1 * inch, 1.2 * inch])
+-        ci_table.setStyle(TableStyle([
+-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+-        ]))
++        ci_table.setStyle(
++            TableStyle(
++                [
++                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
++                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
++                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
++                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
++                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
++                ]
++            )
++        )
+         elements.append(ci_table)
+         elements.append(Spacer(1, 0.3 * inch))
+ 
+@@ -302,20 +331,26 @@ def generate_pdf_report(
+         ["Rejected", str(rejected)],
+     ]
+     req_table = Table(req_data, colWidths=[3 * inch, 1.5 * inch])
+-    req_table.setStyle(TableStyle([
+-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+-    ]))
++    req_table.setStyle(
++        TableStyle(
++            [
++                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
++                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
++                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
++                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
++                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
++            ]
++        )
++    )
+     elements.append(req_table)
+ 
+     # Build PDF
+     doc.build(elements)
+     buffer.seek(0)
+ 
+-    filename = f"inventory_report_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}.pdf"
++    filename = (
++        f"inventory_report_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}.pdf"
++    )
+ 
+     return StreamingResponse(
+         buffer,
+diff --git a/backend/app/api/routes/auth.py b/backend/app/api/routes/auth.py
+index a1bf3aa..8fe499a 100644
+--- a/backend/app/api/routes/auth.py
++++ b/backend/app/api/routes/auth.py
+@@ -5,7 +5,12 @@ from fastapi import APIRouter, Depends, Request
+ from sqlalchemy.orm import Session
+ from typing import Optional
+ 
+-from app.core.dependencies import get_user_repo, get_current_user, require_admin
++from app.core.dependencies import (
++    get_user_repo,
++    get_current_user,
++    require_admin,
++    get_db_session,
++)
+ from app.core.config import settings
+ from app.core.rate_limiter import limiter
+ from app.core.security import (
+@@ -35,11 +40,6 @@ from app.api.schemas.auth_schemas import (
+     GoogleAuthRequest,
+ )
+ 
+-import secrets
+-import smtplib
+-from email.mime.text import MIMEText
+-from email.mime.multipart import MIMEMultipart
+-
+ import secrets
+ import smtplib
+ from email.mime.text import MIMEText
+@@ -86,14 +86,16 @@ def _send_email(to_email: str, subject: str, html_content: str) -> bool:
+     if not settings.SMTP_ENABLED:
+         logger.info("SMTP disabled - email not sent (to: %s)", to_email)
+         return False
+-    
++
+     if not settings.SMTP_HOST or not settings.SMTP_USER:
+         logger.warning("SMTP not configured - email not sent")
+         return False
+ 
+     try:
+         msg = MIMEMultipart("alternative")
+-        msg["From"] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_FROM_EMAIL or settings.SMTP_USER}>"
++        msg["From"] = (
++            f"{settings.SMTP_FROM_NAME} <{settings.SMTP_FROM_EMAIL or settings.SMTP_USER}>"
++        )
+         msg["To"] = to_email
+         msg["Subject"] = subject
+         msg.attach(MIMEText(html_content, "html"))
+@@ -104,7 +106,7 @@ def _send_email(to_email: str, subject: str, html_content: str) -> bool:
+             server.sendmail(
+                 settings.SMTP_FROM_EMAIL or settings.SMTP_USER,
+                 to_email,
+-                msg.as_string()
++                msg.as_string(),
+             )
+         logger.info("Email sent successfully to %s", to_email)
+         return True
+@@ -326,7 +328,7 @@ def login(
+ def logout(
+     request: Request,
+     current_user: User = Depends(get_current_user),
+-    db: Session = Depends(get_user_repo),
++    db: Session = Depends(get_db_session),
+ ):
+     """Blacklist the current access token (and optionally refresh token)."""
+     from app.infrastructure.cache.token_blacklist import (
+diff --git a/backend/app/application/requisition_service.py b/backend/app/application/requisition_service.py
+index 8668a8d..ebc2cbd 100644
+--- a/backend/app/application/requisition_service.py
++++ b/backend/app/application/requisition_service.py
+@@ -185,8 +185,9 @@ class RequisitionService:
+ 
+                 if approved_qty > current_stock:
+                     item = self.repo.get_item(req_item.item_id)
++                    item_label = item.name if item else f"item_id={req_item.item_id}"
+                     stock_errors.append(
+-                        f"{item.name}: requested {approved_qty}, available {current_stock}"
++                        f"{item_label}: requested {approved_qty}, available {current_stock}"
+                     )
+ 
+             if stock_errors:
+diff --git a/backend/app/core/config.py b/backend/app/core/config.py
+index 706d2d3..0f21ca1 100644
+--- a/backend/app/core/config.py
++++ b/backend/app/core/config.py
+@@ -52,10 +52,10 @@ class Settings:
+     LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1024"))
+     
+     # ΓöÇΓöÇ LangSmith (Observability) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-    LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY")
+-    LANGCHAIN_PROJECT = os.getenv("LANGCHAIN_PROJECT", "smart-inventory-assistant")
+-    LANGCHAIN_TRACING_V2 = os.getenv("LANGCHAIN_TRACING_V2", "false")
+-    LANGCHAIN_ENDPOINT = os.getenv("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com")
++    LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY")
++    LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "InvIQ")
++    LANGSMITH_TRACING = os.getenv("LANGSMITH_TRACING", "false")
++    LANGSMITH_ENDPOINT = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
+     
+     # ΓöÇΓöÇ ChromaDB (Vector Store) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+     CHROMADB_ENABLED = os.getenv("CHROMADB_ENABLED", "true").lower() == "true"
+@@ -74,16 +74,17 @@ class Settings:
+     LOCKOUT_DURATION_MINUTES = int(os.getenv("LOCKOUT_DURATION_MINUTES", "15"))
+ 
+     # ΓöÇΓöÇ Super Admin (platform owner) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-    SUPER_ADMIN_EMAIL = os.getenv("SUPER_ADMIN_EMAIL", "sayandip@inviq.io")
++    SUPER_ADMIN_EMAIL = os.getenv("SUPER_ADMIN_EMAIL", "admin@example.com")
+ 
+     # ΓöÇΓöÇ Admin Seed (first startup only) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+     ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@inventory.local")
+     ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+-    ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
++    ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+     ADMIN_FULL_NAME = os.getenv("ADMIN_FULL_NAME", "System Administrator")
+ 
+-    # ΓöÇΓöÇ Redis (Caching) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-    REDIS_URL = os.getenv("REDIS_URL", "")  # e.g. redis://localhost:6379 or Upstash
++    # ΓöÇΓöÇ Upstash Redis (Caching) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++    UPSTASH_REDIS_REST_URL = os.getenv("UPSTASH_REDIS_REST_URL", "")
++    UPSTASH_REDIS_REST_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN", "")
+     REDIS_ENABLED = os.getenv("REDIS_ENABLED", "true").lower() == "true"
+ 
+     # ΓöÇΓöÇ Rate Limiting ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+@@ -118,9 +119,9 @@ def _validate_production_config():
+                 "FATAL: SECRET_KEY is still the insecure default! "
+                 "Generate a secure key with: openssl rand -hex 32"
+             )
+-        if settings.ADMIN_PASSWORD == "admin123":
++        if settings.ADMIN_PASSWORD == "":
+             logger.warning(
+-                "ΓÜá∩╕Å  ADMIN_PASSWORD is the default 'admin123'. "
++                "ΓÜá∩╕Å  ADMIN_PASSWORD is empty. "
+                 "Set ADMIN_PASSWORD env var to a strong password for production."
+             )
+     elif settings.SECRET_KEY == "your-super-secret-key-change-in-production":
+@@ -134,16 +135,18 @@ _validate_production_config()
+ 
+ 
+ def configure_langsmith():
+-    if settings.LANGCHAIN_API_KEY:
+-        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+-        os.environ["LANGCHAIN_API_KEY"] = settings.LANGCHAIN_API_KEY
+-        os.environ["LANGCHAIN_PROJECT"] = settings.LANGCHAIN_PROJECT
+-        os.environ["LANGCHAIN_ENDPOINT"] = settings.LANGCHAIN_ENDPOINT
++    """Configure LangSmith observability using LANGSMITH_* environment variables."""
++    if settings.LANGSMITH_API_KEY:
++        os.environ["LANGSMITH_API_KEY"] = settings.LANGSMITH_API_KEY
++        os.environ["LANGSMITH_PROJECT"] = settings.LANGSMITH_PROJECT
++        os.environ["LANGSMITH_TRACING"] = "true"
++        os.environ["LANGSMITH_ENDPOINT"] = settings.LANGSMITH_ENDPOINT
+         logger.info(
+-            "LangSmith tracing enabled ΓåÆ project: %s", settings.LANGCHAIN_PROJECT
++            "Γ£à LangSmith tracing enabled ΓåÆ project: %s", settings.LANGSMITH_PROJECT
+         )
+     else:
+-        os.environ["LANGCHAIN_TRACING_V2"] = "false"
++        os.environ["LANGSMITH_TRACING"] = "false"
++        logger.info("LangSmith tracing disabled ΓÇö LANGSMITH_API_KEY not set")
+ 
+ 
+ configure_langsmith()
+diff --git a/backend/app/core/dependencies.py b/backend/app/core/dependencies.py
+index 001f6e0..238046b 100644
+--- a/backend/app/core/dependencies.py
++++ b/backend/app/core/dependencies.py
+@@ -28,6 +28,7 @@ from app.infrastructure.database.models import User
+ 
+ # ΓöÇΓöÇ Repository factories ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ 
++
+ def get_inventory_repo(db: Session = Depends(get_db)) -> InventoryRepository:
+     return InventoryRepository(db)
+ 
+@@ -40,6 +41,11 @@ def get_user_repo(db: Session = Depends(get_db)) -> UserRepository:
+     return UserRepository(db)
+ 
+ 
++def get_db_session(db: Session = Depends(get_db)) -> Session:
++    """Raw database session for direct DB operations."""
++    return db
++
++
+ def get_inventory_service(
+     repo: InventoryRepository = Depends(get_inventory_repo),
+ ) -> InventoryService:
+@@ -55,6 +61,7 @@ def get_requisition_service(
+ 
+ # ΓöÇΓöÇ Authentication dependency (FastAPI tutorial pattern) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ 
++
+ def get_current_user(
+     token: Annotated[str, Depends(oauth2_scheme)],
+     db: Session = Depends(get_db),
+@@ -79,6 +86,7 @@ def get_current_user(
+     try:
+         # ΓöÇΓöÇ Check token blacklist (invalidated on logout) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+         from app.infrastructure.cache.token_blacklist import is_token_blacklisted
++
+         if is_token_blacklisted(token):
+             raise HTTPException(
+                 status_code=status.HTTP_401_UNAUTHORIZED,
+@@ -120,6 +128,7 @@ def get_current_user(
+ 
+ # ΓöÇΓöÇ Active user shorthand ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ 
++
+ def get_current_active_user(
+     current_user: Annotated[User, Depends(get_current_user)],
+ ) -> User:
+@@ -131,8 +140,10 @@ def get_current_active_user(
+ 
+ # ΓöÇΓöÇ Role-based access control ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ 
++
+ def require_role(required_role: str):
+     """Factory that returns a dependency requiring minimum role level."""
++
+     def role_checker(
+         current_user: Annotated[User, Depends(get_current_user)],
+     ) -> User:
+@@ -142,6 +153,7 @@ def require_role(required_role: str):
+                 detail=f"Insufficient permissions. Requires '{required_role}' role or higher.",
+             )
+         return current_user
++
+     return role_checker
+ 
+ 
+@@ -191,4 +203,3 @@ def require_vendor(
+             detail="Vendor access required.",
+         )
+     return current_user
+-
+diff --git a/backend/app/core/rate_limiter.py b/backend/app/core/rate_limiter.py
+index ee3e83d..fbebdef 100644
+--- a/backend/app/core/rate_limiter.py
++++ b/backend/app/core/rate_limiter.py
+@@ -52,12 +52,25 @@ def get_user_id_or_ip(request: Request) -> str:
+ 
+ 
+ def _get_storage_uri() -> str:
+-    """Use Redis for distributed rate limiting if available, else in-memory."""
+-    if settings.REDIS_URL:
+-        logger.info("Rate limiter: using Redis backend (distributed)")
+-        return settings.REDIS_URL
++    """
++    Build a storage URI for slowapi.
++
++    Upstash exposes a standard Redis-compatible endpoint over TLS.
++    We derive the host from UPSTASH_REDIS_REST_URL and use the REST
++    token as the password so slowapi can do distributed rate-limiting.
++
++    Falls back to in-memory when Upstash credentials are absent.
++    """
++    url = settings.UPSTASH_REDIS_REST_URL
++    token = settings.UPSTASH_REDIS_REST_TOKEN
++    if url and token:
++        # REST URL is "https://host" ΓÇö strip scheme to get hostname
++        host = url.replace("https://", "").replace("http://", "").rstrip("/")
++        redis_uri = f"rediss://:{token}@{host}:6379"
++        logger.info("Rate limiter: using Upstash Redis backend (distributed)")
++        return redis_uri
+     logger.warning(
+-        "Rate limiter: REDIS_URL not set ΓÇö using in-memory (not shared across workers)"
++        "Rate limiter: Upstash credentials not set ΓÇö using in-memory (not shared across workers)"
+     )
+     return "memory://"
+ 
+diff --git a/backend/app/infrastructure/cache/redis_client.py b/backend/app/infrastructure/cache/redis_client.py
+index f773746..4326f3e 100644
+--- a/backend/app/infrastructure/cache/redis_client.py
++++ b/backend/app/infrastructure/cache/redis_client.py
+@@ -1,8 +1,11 @@
+ """
+-Redis client ΓÇö connection pool with graceful fallback.
++Upstash Redis client ΓÇö REST HTTP backend with graceful fallback.
+ 
+ Layer: Infrastructure
+-Uses a connection pool (max 20 connections) for efficient reuse.
++Uses the upstash-redis Python SDK which talks to Upstash over HTTPS (REST),
++making it compatible with serverless / edge environments without a persistent
++TCP connection.
++
+ When Redis is unavailable the app continues without caching ΓÇö all callers
+ check is_redis_available() or receive None from get_redis().
+ 
+@@ -14,71 +17,63 @@ Key namespaces used by this app:
+ """
+ 
+ import logging
+-import redis
+-from redis import ConnectionPool
+-from typing import Any, Optional
+ import json
++from typing import Any, Optional
+ 
+ from app.core.config import settings
+ 
+ logger = logging.getLogger("smart_inventory.redis")
+ 
+-_pool: ConnectionPool | None = None
+-_redis_client: redis.Redis | None = None
++# ΓöÇΓöÇ Module-level singleton ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++_redis_client = None          # upstash_redis.Redis instance or None
+ _redis_available: bool = False
+ 
+ 
+-def _safe_url_log(url: str) -> str:
+-    """Mask password in Redis URL for safe logging."""
+-    if "@" in url:
+-        return "redis://***@" + url.split("@")[-1]
+-    return url
+-
+-
+-def _build_pool() -> ConnectionPool:
+-    """Build a Redis connection pool with sensible production defaults."""
+-    return redis.ConnectionPool.from_url(
+-        settings.REDIS_URL,
+-        max_connections=20,
+-        decode_responses=True,
+-        socket_connect_timeout=3,
+-        socket_timeout=3,
+-        retry_on_timeout=True,
+-        health_check_interval=30,   # background ping every 30s
++def _build_client():
++    """Instantiate an Upstash Redis client from env settings."""
++    from upstash_redis import Redis  # lazy import ΓÇö only fails if pkg missing
++    return Redis(
++        url=settings.UPSTASH_REDIS_REST_URL,
++        token=settings.UPSTASH_REDIS_REST_TOKEN,
+     )
+ 
+ 
+-def get_redis() -> redis.Redis | None:
++def get_redis():
+     """
+-    Get the singleton Redis client backed by a connection pool.
++    Get the singleton Upstash Redis client.
+     Returns None if Redis is unavailable or not configured.
+     """
+-    global _pool, _redis_client, _redis_available
++    global _redis_client, _redis_available
+ 
+     if _redis_client is not None:
+         return _redis_client if _redis_available else None
+ 
+-    if not settings.REDIS_URL:
+-        logger.info("REDIS_URL not set ΓÇö running without Redis (in-memory fallback active)")
++    if not settings.UPSTASH_REDIS_REST_URL or not settings.UPSTASH_REDIS_REST_TOKEN:
++        logger.info(
++            "UPSTASH_REDIS_REST_URL / TOKEN not set ΓÇö running without Redis (in-memory fallback active)"
++        )
+         _redis_available = False
+         return None
+ 
+     try:
+-        _pool = _build_pool()
+-        _redis_client = redis.Redis(connection_pool=_pool)
++        _redis_client = _build_client()
++        # Ping to verify connectivity
+         _redis_client.ping()
+         _redis_available = True
+-        logger.info("Redis connected via pool ΓåÆ %s", _safe_url_log(settings.REDIS_URL))
++        logger.info(
++            "Upstash Redis connected ΓåÆ %s",
++            settings.UPSTASH_REDIS_REST_URL,
++        )
+         return _redis_client
+     except Exception as e:
+-        logger.warning("Redis connection failed ΓÇö running without cache: %s", e)
++        logger.warning("Upstash Redis connection failed ΓÇö running without cache: %s", e)
+         _redis_available = False
+         _redis_client = None
+         return None
+ 
+ 
+ def is_redis_available() -> bool:
+-    """Ping Redis to confirm it's still healthy."""
++    """Ping Upstash Redis to confirm it's still healthy."""
+     global _redis_available
+     if _redis_available and _redis_client:
+         try:
+@@ -86,25 +81,19 @@ def is_redis_available() -> bool:
+             return True
+         except Exception:
+             _redis_available = False
+-            logger.warning("Redis health check failed ΓÇö marking unavailable")
++            logger.warning("Upstash Redis health check failed ΓÇö marking unavailable")
+     return False
+ 
+ 
+ def close_redis() -> None:
+-    """Graceful shutdown ΓÇö disconnect all pool connections."""
+-    global _pool, _redis_client, _redis_available
+-    if _pool:
+-        try:
+-            _pool.disconnect()
+-            logger.info("Redis connection pool closed")
+-        except Exception:
+-            pass
+-    _pool = None
++    """Reset singleton state (Upstash REST client has no persistent pool to close)."""
++    global _redis_client, _redis_available
+     _redis_client = None
+     _redis_available = False
++    logger.info("Upstash Redis client reference cleared")
+ 
+ 
+-# ΓöÇΓöÇ Typed helpers (used by cache_service, token_blacklist, login_attempts) ΓöÇ
++# ΓöÇΓöÇ Typed helpers (used by cache_service, token_blacklist, login_attempts) ΓöÇΓöÇΓöÇ
+ 
+ def redis_get_json(key: str) -> Optional[Any]:
+     """Get a JSON-deserialized value from Redis. Returns None on any failure."""
+@@ -113,7 +102,12 @@ def redis_get_json(key: str) -> Optional[Any]:
+         return None
+     try:
+         raw = r.get(key)
+-        return json.loads(raw) if raw is not None else None
++        if raw is None:
++            return None
++        # upstash-redis already decodes strings; parse if it's a JSON string
++        if isinstance(raw, str):
++            return json.loads(raw)
++        return raw
+     except Exception as e:
+         logger.debug("redis_get_json failed key=%s: %s", key, e)
+         return None
+@@ -154,11 +148,11 @@ def redis_increment(key: str, ttl_seconds: int) -> int:
+     if not r:
+         return 0
+     try:
+-        pipe = r.pipeline()
+-        pipe.incr(key)
+-        pipe.expire(key, ttl_seconds, nx=True)   # nx=True: only set if not already set
+-        results = pipe.execute()
+-        return results[0]
++        count = r.incr(key)
++        # Only set TTL when the key is freshly created (count == 1)
++        if count == 1:
++            r.expire(key, ttl_seconds)
++        return count
+     except Exception as e:
+         logger.debug("redis_increment failed key=%s: %s", key, e)
+         return 0
+diff --git a/backend/app/infrastructure/database/connection.py b/backend/app/infrastructure/database/connection.py
+index 7ce1dae..18e8325 100644
+--- a/backend/app/infrastructure/database/connection.py
++++ b/backend/app/infrastructure/database/connection.py
+@@ -31,12 +31,20 @@ logger.info("Database: PostgreSQL")
+ 
+ # ΓöÇΓöÇ Engine ΓÇö connection pool optimized for production ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ 
+-engine = create_engine(
+-    DATABASE_URL,
+-    pool_size=5,
+-    max_overflow=10,
+-    pool_pre_ping=True,  # auto-reconnect on stale connections
+-)
++is_sqlite = DATABASE_URL.startswith("sqlite")
++
++if is_sqlite:
++    engine = create_engine(
++        DATABASE_URL,
++        connect_args={"check_same_thread": False},
++    )
++else:
++    engine = create_engine(
++        DATABASE_URL,
++        pool_size=5,
++        max_overflow=10,
++        pool_pre_ping=True,
++    )
+ 
+ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+ 
+diff --git a/backend/app/infrastructure/database/inventory_repo.py b/backend/app/infrastructure/database/inventory_repo.py
+index c32c524..d63cac8 100644
+--- a/backend/app/infrastructure/database/inventory_repo.py
++++ b/backend/app/infrastructure/database/inventory_repo.py
+@@ -1,8 +1,9 @@
+ import logging
+ from sqlalchemy.orm import Session
+ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
++from sqlalchemy import func
+ from datetime import date
+-from typing import Optional, List
++from typing import Optional, List, Dict
+ 
+ from app.infrastructure.database.models import Location, Item, InventoryTransaction
+ from app.core.exceptions import DatabaseError, DuplicateError
+@@ -91,6 +92,39 @@ class InventoryRepository:
+             .first()
+         )
+ 
++    def get_latest_stocks_for_location(self, location_id: int) -> Dict[int, int]:
++        """
++        Single query: returns {item_id: closing_stock} for the latest transaction
++        of every item at the given location. Replaces N+1 queries with 1 query.
++        """
++        # Subquery: find the max date per item at this location
++        latest_date_sub = (
++            self.db.query(
++                InventoryTransaction.item_id,
++                func.max(InventoryTransaction.date).label("max_date"),
++            )
++            .filter(InventoryTransaction.location_id == location_id)
++            .group_by(InventoryTransaction.item_id)
++            .subquery()
++        )
++
++        # Join back to get the closing_stock of that latest row
++        rows = (
++            self.db.query(
++                InventoryTransaction.item_id,
++                InventoryTransaction.closing_stock,
++            )
++            .join(
++                latest_date_sub,
++                (InventoryTransaction.item_id == latest_date_sub.c.item_id)
++                & (InventoryTransaction.date == latest_date_sub.c.max_date),
++            )
++            .filter(InventoryTransaction.location_id == location_id)
++            .all()
++        )
++
++        return {row.item_id: row.closing_stock for row in rows}
++
+     def create_transaction(self, flush_only: bool = False, **kwargs) -> InventoryTransaction:
+         """
+         Create an inventory transaction.
+diff --git a/docker-compose.yml b/docker-compose.yml
+index 0def8a3..75dce47 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -1,45 +1,23 @@
+ # ΓöÇΓöÇ Docker Compose: Local Development Stack ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-# Orchestrates Nginx, FastAPI app, PostgreSQL, and Redis for local dev.
++# Orchestrates FastAPI app and PostgreSQL for local dev.
++# Redis is provided by Upstash (cloud).
+ #
+ # Usage:
+ #   docker compose up -d          ΓåÆ start all services
+ #   docker compose logs -f app    ΓåÆ tail the app logs
+-#   docker compose logs -f nginx  ΓåÆ tail nginx logs
+ #   docker compose down -v        ΓåÆ stop + remove volumes
+ #
+ # Architecture:
+-#   Client ΓåÆ Nginx (80) ΓåÆ FastAPI (8000) ΓåÆ PostgreSQL (5432) + Redis (6379)
++#   Client ΓåÆ FastAPI (8000) ΓåÆ PostgreSQL (5432) + Upstash Redis (cloud)
+ 
+ services:
+-  # ΓöÇΓöÇ Nginx Reverse Proxy ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-  nginx:
+-    build:
+-      context: ./nginx
+-      dockerfile: Dockerfile
+-    restart: unless-stopped
+-    ports:
+-      - "80:80"
+-    depends_on:
+-      app:
+-        condition: service_healthy
+-    volumes:
+-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+-      - nginx_logs:/var/log/nginx
+-    healthcheck:
+-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+-      interval: 30s
+-      timeout: 10s
+-      retries: 3
+-    networks:
+-      - inviq_network
+-
+   # ΓöÇΓöÇ PostgreSQL Database ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+   db:
+     image: postgres:16-alpine
+     restart: unless-stopped
+     environment:
+-      POSTGRES_USER: inventory_user
+-      POSTGRES_PASSWORD: inventory_pass
++      POSTGRES_USER: ${POSTGRES_USER:-inventory_user}
++      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-inventory_pass}
+       POSTGRES_DB: smart_inventory
+     ports:
+       - "5432:5432"
+@@ -53,40 +31,21 @@ services:
+     networks:
+       - inviq_network
+ 
+-
+-  # ΓöÇΓöÇ Redis Cache ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-  redis:
+-    image: redis:7-alpine
+-    restart: unless-stopped
+-    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru
+-    ports:
+-      - "6379:6379"
+-    volumes:
+-      - redis_data:/data
+-    healthcheck:
+-      test: ["CMD", "redis-cli", "ping"]
+-      interval: 10s
+-      timeout: 5s
+-      retries: 5
+-    networks:
+-      - inviq_network
+-
+-
+   # ΓöÇΓöÇ FastAPI Application ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+   app:
+     build:
+       context: .
+       dockerfile: Dockerfile
+     restart: unless-stopped
+-    expose:
+-      - "8000"  # Internal only, accessed via Nginx
++    ports:
++      - "8000:8000"
+     environment:
+       # Database ΓÇö connects to the 'db' service above
+-      DATABASE_URL: postgresql://inventory_user:inventory_pass@db:5432/smart_inventory
++      DATABASE_URL: postgresql://${POSTGRES_USER:-inventory_user}:${POSTGRES_PASSWORD:-inventory_pass}@db:5432/smart_inventory
+       ENVIRONMENT: production
+ 
+-      # Redis ΓÇö connects to the 'redis' service above
+-      REDIS_URL: redis://redis:6379/0
++      # Redis ΓÇö connects to Upstash Redis (cloud)
++      REDIS_URL: ${REDIS_URL:-}
+ 
+       # Security ΓÇö CHANGE THESE for production!
+       SECRET_KEY: ${SECRET_KEY:-change-me-generate-with-openssl-rand-hex-32}
+@@ -102,8 +61,6 @@ services:
+     depends_on:
+       db:
+         condition: service_healthy
+-      redis:
+-        condition: service_healthy
+     healthcheck:
+       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+       interval: 30s
+@@ -121,6 +78,4 @@ networks:
+ # ΓöÇΓöÇ Volumes ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ volumes:
+   postgres_data:
+-  redis_data:
+-  nginx_logs:
+ 
+diff --git a/nginx/Dockerfile b/nginx/Dockerfile
+deleted file mode 100644
+index 4fd13d6..0000000
+--- a/nginx/Dockerfile
++++ /dev/null
+@@ -1,31 +0,0 @@
+-# ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+-# Nginx Dockerfile for InvIQ Smart Inventory Assistant
+-# ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+-# Purpose: Lightweight Nginx reverse proxy container
+-# Base: Official Nginx Alpine image (minimal size)
+-# ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+-
+-FROM nginx:1.25-alpine
+-
+-# Install curl for health checks
+-RUN apk add --no-cache curl
+-
+-# Remove default Nginx configuration
+-RUN rm /etc/nginx/conf.d/default.conf
+-
+-# Copy custom Nginx configuration
+-COPY nginx.conf /etc/nginx/nginx.conf
+-
+-# Create log directory
+-RUN mkdir -p /var/log/nginx && \
+-    chown -R nginx:nginx /var/log/nginx
+-
+-# Expose HTTP port
+-EXPOSE 80
+-
+-# Health check
+-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+-    CMD curl -f http://localhost/health || exit 1
+-
+-# Start Nginx in foreground
+-CMD ["nginx", "-g", "daemon off;"]
+diff --git a/nginx/README.md b/nginx/README.md
+deleted file mode 100644
+index 1d5d871..0000000
+--- a/nginx/README.md
++++ /dev/null
+@@ -1,178 +0,0 @@
+-# Nginx Configuration for InvIQ
+-
+-This directory contains the Nginx reverse proxy configuration for the InvIQ Smart Inventory Assistant.
+-
+-## Files
+-
+-- **nginx.conf** - Main Nginx configuration with rate limiting, security headers, and routing
+-- **Dockerfile** - Nginx container build configuration
+-- **README.md** - This file
+-
+-## Quick Start
+-
+-### Local Development with Docker Compose
+-
+-```bash
+-# From project root
+-docker compose up -d
+-
+-# Access via Nginx
+-curl http://localhost/health
+-
+-# View Nginx logs
+-docker compose logs -f nginx
+-```
+-
+-### Standalone Nginx Container
+-
+-```bash
+-# Build Nginx image
+-cd nginx
+-docker build -t inviq-nginx:latest .
+-
+-# Run Nginx container
+-docker run -d \
+-  --name inviq-nginx \
+-  -p 80:80 \
+-  --network inviq_network \
+-  inviq-nginx:latest
+-```
+-
+-## Configuration Highlights
+-
+-### Rate Limiting
+-
+-| Zone | Limit | Endpoints |
+-|------|-------|-----------|
+-| `api_limit` | 10 req/s | All `/api/*` |
+-| `auth_limit` | 5 req/min | `/api/auth/login`, `/api/auth/register` |
+-| `upload_limit` | 2 req/min | `/api/vendor/upload-delivery` |
+-
+-### Security Headers
+-
+-- `X-Frame-Options: SAMEORIGIN`
+-- `X-Content-Type-Options: nosniff`
+-- `X-XSS-Protection: 1; mode=block`
+-- `Referrer-Policy: no-referrer-when-downgrade`
+-
+-### Features
+-
+-- Γ£à Rate limiting (3 zones)
+-- Γ£à Gzip compression
+-- Γ£à WebSocket proxying
+-- Γ£à Connection pooling
+-- Γ£à SSL/TLS support (production)
+-- Γ£à Health check endpoint
+-- Γ£à Request logging
+-
+-## Testing
+-
+-### Test Rate Limits
+-
+-```bash
+-# Test general API rate limit (10 req/s)
+-for i in {1..15}; do curl http://localhost/api/inventory/locations; done
+-
+-# Test auth rate limit (5 req/min)
+-for i in {1..7}; do 
+-  curl -X POST http://localhost/api/auth/login \
+-    -H "Content-Type: application/json" \
+-    -d '{"username":"test","password":"test"}'; 
+-done
+-```
+-
+-### Test WebSocket
+-
+-```bash
+-# Install wscat if needed
+-npm install -g wscat
+-
+-# Connect to WebSocket
+-wscat -c "ws://localhost/ws/alerts/1?token=YOUR_JWT_TOKEN"
+-```
+-
+-### Verify Configuration
+-
+-```bash
+-# Test Nginx config syntax
+-docker compose exec nginx nginx -t
+-
+-# Reload Nginx config (no downtime)
+-docker compose exec nginx nginx -s reload
+-```
+-
+-## Production Setup
+-
+-### SSL/TLS Configuration
+-
+-1. Obtain SSL certificates (Let's Encrypt):
+-```bash
+-certbot certonly --nginx -d inviq.example.com
+-```
+-
+-2. Update `nginx.conf` with SSL configuration (see commented section)
+-
+-3. Restart Nginx:
+-```bash
+-docker compose restart nginx
+-```
+-
+-### Environment Variables
+-
+-No environment variables required for Nginx. All configuration is in `nginx.conf`.
+-
+-## Monitoring
+-
+-### View Logs
+-
+-```bash
+-# Access logs
+-docker compose exec nginx tail -f /var/log/nginx/access.log
+-
+-# Error logs
+-docker compose exec nginx tail -f /var/log/nginx/error.log
+-
+-# Both logs
+-docker compose logs -f nginx
+-```
+-
+-### Key Metrics
+-
+-- Active connections
+-- Request rate
+-- 429 (rate limit) responses
+-- 5xx errors
+-- Response times
+-
+-## Troubleshooting
+-
+-| Issue | Solution |
+-|-------|----------|
+-| 502 Bad Gateway | Check backend: `docker compose logs app` |
+-| 429 Too Many Requests | Rate limit hit, wait or increase limits |
+-| WebSocket fails | Check upgrade headers in config |
+-| Config errors | Run `nginx -t` to test syntax |
+-
+-## Documentation
+-
+-For complete documentation, see [docs/NGINX.md](../docs/NGINX.md)
+-
+-## Architecture
+-
+-```
+-Client ΓåÆ Nginx (80/443) ΓåÆ FastAPI (8000) ΓåÆ PostgreSQL + Redis
+-```
+-
+-Nginx handles:
+-- Rate limiting
+-- SSL/TLS termination
+-- Gzip compression
+-- Security headers
+-- WebSocket proxying
+-- Load balancing
+-
+-FastAPI handles:
+-- Business logic
+-- Authentication
+-- Database operations
+-- AI agent
+diff --git a/nginx/nginx.conf b/nginx/nginx.conf
+deleted file mode 100644
+index 4911e89..0000000
+--- a/nginx/nginx.conf
++++ /dev/null
+@@ -1,256 +0,0 @@
+-# ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+-# InvIQ Smart Inventory Assistant - Nginx Configuration
+-# ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+-# Purpose: Reverse proxy for FastAPI backend + static frontend serving
+-# Architecture: Nginx ΓåÆ FastAPI (Gunicorn) + React SPA
+-# ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+-
+-user nginx;
+-worker_processes auto;
+-error_log /var/log/nginx/error.log warn;
+-pid /var/run/nginx.pid;
+-
+-events {
+-    worker_connections 1024;
+-    use epoll;
+-    multi_accept on;
+-}
+-
+-http {
+-    include /etc/nginx/mime.types;
+-    default_type application/octet-stream;
+-
+-    # ΓöÇΓöÇ Logging ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+-                    '$status $body_bytes_sent "$http_referer" '
+-                    '"$http_user_agent" "$http_x_forwarded_for" '
+-                    'rt=$request_time uct="$upstream_connect_time" '
+-                    'uht="$upstream_header_time" urt="$upstream_response_time"';
+-
+-    access_log /var/log/nginx/access.log main;
+-
+-    # ΓöÇΓöÇ Performance ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-    sendfile on;
+-    tcp_nopush on;
+-    tcp_nodelay on;
+-    keepalive_timeout 65;
+-    types_hash_max_size 2048;
+-    client_max_body_size 20M;  # For Excel uploads
+-
+-    # ΓöÇΓöÇ Gzip Compression ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-    gzip on;
+-    gzip_vary on;
+-    gzip_proxied any;
+-    gzip_comp_level 6;
+-    gzip_types text/plain text/css text/xml text/javascript 
+-               application/json application/javascript application/xml+rss 
+-               application/rss+xml font/truetype font/opentype 
+-               application/vnd.ms-fontobject image/svg+xml;
+-    gzip_disable "msie6";
+-
+-    # ΓöÇΓöÇ Rate Limiting ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-    # Zone for general API rate limiting (10 req/sec per IP)
+-    limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+-    
+-    # Zone for auth endpoints (stricter: 5 req/min per IP)
+-    limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=5r/m;
+-    
+-    # Zone for upload endpoints (2 req/min per IP)
+-    limit_req_zone $binary_remote_addr zone=upload_limit:10m rate=2r/m;
+-
+-    # ΓöÇΓöÇ Connection Limiting ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-    limit_conn_zone $binary_remote_addr zone=conn_limit:10m;
+-
+-    # ΓöÇΓöÇ Upstream Backend ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-    upstream fastapi_backend {
+-        least_conn;  # Load balancing method
+-        server app:8000 max_fails=3 fail_timeout=30s;
+-        keepalive 32;
+-    }
+-
+-    # ΓöÇΓöÇ Main Server Block ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-    server {
+-        listen 80;
+-        server_name localhost;
+-        
+-        # Security headers
+-        add_header X-Frame-Options "SAMEORIGIN" always;
+-        add_header X-Content-Type-Options "nosniff" always;
+-        add_header X-XSS-Protection "1; mode=block" always;
+-        add_header Referrer-Policy "no-referrer-when-downgrade" always;
+-
+-        # ΓöÇΓöÇ Health Check (No Rate Limit) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-        location /health {
+-            proxy_pass http://fastapi_backend/health;
+-            proxy_http_version 1.1;
+-            proxy_set_header Connection "";
+-            access_log off;  # Don't log health checks
+-        }
+-
+-        # ΓöÇΓöÇ API Routes (Rate Limited) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-        location /api/ {
+-            # General API rate limit
+-            limit_req zone=api_limit burst=20 nodelay;
+-            limit_conn conn_limit 10;
+-
+-            proxy_pass http://fastapi_backend;
+-            proxy_http_version 1.1;
+-            
+-            # Headers
+-            proxy_set_header Host $host;
+-            proxy_set_header X-Real-IP $remote_addr;
+-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+-            proxy_set_header X-Forwarded-Proto $scheme;
+-            proxy_set_header Connection "";
+-            
+-            # Timeouts
+-            proxy_connect_timeout 60s;
+-            proxy_send_timeout 60s;
+-            proxy_read_timeout 60s;
+-            
+-            # Buffering
+-            proxy_buffering on;
+-            proxy_buffer_size 4k;
+-            proxy_buffers 8 4k;
+-            proxy_busy_buffers_size 8k;
+-        }
+-
+-        # ΓöÇΓöÇ Auth Endpoints (Stricter Rate Limit) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-        location ~ ^/api/auth/(login|register|refresh) {
+-            limit_req zone=auth_limit burst=3 nodelay;
+-            limit_conn conn_limit 5;
+-
+-            proxy_pass http://fastapi_backend;
+-            proxy_http_version 1.1;
+-            
+-            proxy_set_header Host $host;
+-            proxy_set_header X-Real-IP $remote_addr;
+-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+-            proxy_set_header X-Forwarded-Proto $scheme;
+-            proxy_set_header Connection "";
+-            
+-            proxy_connect_timeout 30s;
+-            proxy_send_timeout 30s;
+-            proxy_read_timeout 30s;
+-        }
+-
+-        # ΓöÇΓöÇ Upload Endpoints (File Upload Optimized) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-        location ~ ^/api/(vendor/upload-delivery|inventory/upload-transactions) {
+-            limit_req zone=upload_limit burst=2 nodelay;
+-            limit_conn conn_limit 3;
+-
+-            client_max_body_size 20M;
+-            client_body_buffer_size 128k;
+-
+-            proxy_pass http://fastapi_backend;
+-            proxy_http_version 1.1;
+-            
+-            proxy_set_header Host $host;
+-            proxy_set_header X-Real-IP $remote_addr;
+-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+-            proxy_set_header X-Forwarded-Proto $scheme;
+-            proxy_set_header Connection "";
+-            
+-            # Longer timeouts for file uploads
+-            proxy_connect_timeout 120s;
+-            proxy_send_timeout 120s;
+-            proxy_read_timeout 120s;
+-            
+-            # Disable buffering for uploads
+-            proxy_request_buffering off;
+-        }
+-
+-        # ΓöÇΓöÇ WebSocket (Real-time Alerts) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-        location /ws/ {
+-            proxy_pass http://fastapi_backend;
+-            proxy_http_version 1.1;
+-            
+-            # WebSocket upgrade headers
+-            proxy_set_header Upgrade $http_upgrade;
+-            proxy_set_header Connection "upgrade";
+-            
+-            proxy_set_header Host $host;
+-            proxy_set_header X-Real-IP $remote_addr;
+-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+-            proxy_set_header X-Forwarded-Proto $scheme;
+-            
+-            # WebSocket timeouts (keep connection alive)
+-            proxy_connect_timeout 7d;
+-            proxy_send_timeout 7d;
+-            proxy_read_timeout 7d;
+-            
+-            # Disable buffering for WebSocket
+-            proxy_buffering off;
+-        }
+-
+-        # ΓöÇΓöÇ API Documentation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-        location ~ ^/(docs|redoc|openapi.json) {
+-            proxy_pass http://fastapi_backend;
+-            proxy_http_version 1.1;
+-            
+-            proxy_set_header Host $host;
+-            proxy_set_header X-Real-IP $remote_addr;
+-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+-            proxy_set_header X-Forwarded-Proto $scheme;
+-        }
+-
+-        # ΓöÇΓöÇ Root Endpoint ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-        location = / {
+-            proxy_pass http://fastapi_backend/;
+-            proxy_http_version 1.1;
+-            
+-            proxy_set_header Host $host;
+-            proxy_set_header X-Real-IP $remote_addr;
+-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+-            proxy_set_header X-Forwarded-Proto $scheme;
+-        }
+-
+-        # ΓöÇΓöÇ Static Frontend (Optional - if serving React build) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-        # Uncomment if you want Nginx to serve the React frontend
+-        # location / {
+-        #     root /usr/share/nginx/html;
+-        #     try_files $uri $uri/ /index.html;
+-        #     
+-        #     # Cache static assets
+-        #     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+-        #         expires 1y;
+-        #         add_header Cache-Control "public, immutable";
+-        #     }
+-        # }
+-
+-        # ΓöÇΓöÇ Error Pages ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-        error_page 404 /404.html;
+-        error_page 500 502 503 504 /50x.html;
+-        
+-        location = /50x.html {
+-            root /usr/share/nginx/html;
+-        }
+-    }
+-
+-    # ΓöÇΓöÇ HTTPS Server Block (Production) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-    # Uncomment and configure for production with SSL certificates
+-    # server {
+-    #     listen 443 ssl http2;
+-    #     server_name your-domain.com;
+-    #
+-    #     ssl_certificate /etc/nginx/ssl/cert.pem;
+-    #     ssl_certificate_key /etc/nginx/ssl/key.pem;
+-    #     ssl_protocols TLSv1.2 TLSv1.3;
+-    #     ssl_ciphers HIGH:!aNULL:!MD5;
+-    #     ssl_prefer_server_ciphers on;
+-    #     ssl_session_cache shared:SSL:10m;
+-    #     ssl_session_timeout 10m;
+-    #
+-    #     # HSTS
+-    #     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+-    #
+-    #     # ... (same location blocks as above)
+-    # }
+-    #
+-    # # HTTP to HTTPS redirect
+-    # server {
+-    #     listen 80;
+-    #     server_name your-domain.com;
+-    #     return 301 https://$server_name$request_uri;
+-    # }
+-}
+diff --git a/requirements.txt b/requirements.txt
+index d14142e..3e6c36c 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -20,14 +20,17 @@ email-validator==2.1.0
+ 
+ # -- Caching & Rate Limiting -----------------------------------------------
+ redis==5.0.1
++upstash-redis==1.1.0
+ slowapi==0.1.9
+ 
+ # -- AI & LLM -------------------------------------------------------------
+-langchain==0.1.0
+-langchain-groq==0.0.1
+-langchain-community==0.0.13
+-langchain-openai==0.0.5
+-langgraph==0.0.20
++langchain>=1.2.15
++langchain-groq>=1.1.2
++langchain-community>=0.4.1
++langchain-openai>=1.2.1
++langchain-core>=1.3.2
++langsmith>=0.7.37
++langgraph>=1.1.10
+ chromadb==0.4.22
+ sentence-transformers==2.2.2
+ 
+@@ -57,4 +60,4 @@ pytest-cov==4.1.0
+ # -- Code Quality (Development Only) ---------------------------------------
+ ruff==0.1.8
+ black==23.12.1
+-mypy==1.7.1
++mypy==1.7.1
+\ No newline at end of file
