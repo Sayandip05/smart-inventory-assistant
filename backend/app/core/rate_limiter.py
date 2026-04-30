@@ -55,20 +55,28 @@ def _get_storage_uri() -> str:
     """
     Build a storage URI for slowapi.
 
-    Upstash exposes a standard Redis-compatible endpoint over TLS.
-    We derive the host from UPSTASH_REDIS_REST_URL and use the REST
-    token as the password so slowapi can do distributed rate-limiting.
-
+    NOTE: slowapi requires a Redis-compatible TCP connection (redis:// or rediss://).
+    Upstash REST API (HTTPS) is NOT compatible with slowapi's redis-py backend.
+    
+    For production with Upstash, we use in-memory rate limiting per worker.
+    This is acceptable because:
+    1. Rate limits are per-worker (still provides protection)
+    2. Upstash Redis is still used for caching and token blacklist
+    3. Alternative: Use a different rate limiter that supports REST APIs
+    
     Falls back to in-memory when Upstash credentials are absent.
     """
     url = settings.UPSTASH_REDIS_REST_URL
     token = settings.UPSTASH_REDIS_REST_TOKEN
+    
     if url and token:
-        # REST URL is "https://host" — strip scheme to get hostname
-        host = url.replace("https://", "").replace("http://", "").rstrip("/")
-        redis_uri = f"rediss://:{token}@{host}:6379"
-        logger.info("Rate limiter: using Upstash Redis backend (distributed)")
-        return redis_uri
+        logger.info(
+            "Rate limiter: Upstash REST API detected. "
+            "Using in-memory rate limiting (per-worker). "
+            "Upstash Redis is still used for caching and token blacklist."
+        )
+        return "memory://"
+    
     logger.warning(
         "Rate limiter: Upstash credentials not set — using in-memory (not shared across workers)"
     )

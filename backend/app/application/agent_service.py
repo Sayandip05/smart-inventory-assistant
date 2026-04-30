@@ -132,7 +132,27 @@ def invoke_agent(
     messages.append({"role": "user", "content": question})
 
     try:
+        # Add timeout to prevent hanging on slow LLM API calls
+        import signal
+        
+        def timeout_handler(signum, frame):
+            raise TimeoutError("Agent invocation timed out after 30 seconds")
+        
+        # Set timeout (Unix-like systems)
+        try:
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(30)  # 30 second timeout
+        except (AttributeError, ValueError):
+            # Windows doesn't support SIGALRM, skip timeout
+            logger.warning("Timeout not supported on this platform (Windows)")
+        
         result = _agent.invoke({"messages": messages})
+        
+        # Cancel timeout
+        try:
+            signal.alarm(0)
+        except (AttributeError, ValueError):
+            pass
 
         # Extract the final assistant message from the agent response
         agent_messages = result.get("messages", [])
@@ -153,6 +173,9 @@ def invoke_agent(
 
         return "I couldn't generate a response. Please try rephrasing your question."
 
+    except TimeoutError as e:
+        logger.error("Agent invocation timed out after 30s")
+        raise RuntimeError("Agent request timed out - please try again")
     except Exception as e:
         logger.error("Agent invocation failed: %s", e, exc_info=True)
         raise RuntimeError(f"Agent error: {str(e)}")

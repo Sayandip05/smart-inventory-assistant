@@ -22,9 +22,13 @@ class VectorMemory:
     """ChromaDB-backed semantic memory for the inventory chatbot."""
 
     def __init__(self, persist_dir: str = None):
+        # Initialize as unavailable by default
+        self._available = False
+        self._client = None
+        self._collection = None
+        
         if not settings.CHROMADB_ENABLED:
             logger.info("ChromaDB disabled via config - running without vector memory")
-            self._available = False
             return
             
         if persist_dir is None:
@@ -35,7 +39,11 @@ class VectorMemory:
                 base_dir = Path(__file__).resolve().parents[4]
                 persist_dir = str(base_dir / settings.CHROMADB_PATH)
 
-        os.makedirs(persist_dir, exist_ok=True)
+        try:
+            os.makedirs(persist_dir, exist_ok=True)
+        except Exception as e:
+            logger.warning("Failed to create ChromaDB directory: %s", e)
+            return
 
         try:
             self._client = chromadb.PersistentClient(
@@ -55,6 +63,8 @@ class VectorMemory:
         except Exception as e:
             logger.warning("ChromaDB init failed, running without vector memory: %s", e)
             self._available = False
+            self._client = None
+            self._collection = None
 
     @property
     def is_available(self) -> bool:

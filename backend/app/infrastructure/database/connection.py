@@ -9,6 +9,7 @@ For development: SQLite is supported (e.g., sqlite:///./database.db)
 """
 
 import logging
+import time
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -33,14 +34,56 @@ logger.info("Database: PostgreSQL")
 
 is_sqlite = DATABASE_URL.startswith("sqlite")
 
+
+def create_engine_with_retry(url: str, max_retries: int = 3, **kwargs):
+    """
+    Create SQLAlchemy engine with retry logic for transient connection failures.
+    
+    Args:
+        url: Database connection string
+        max_retries: Maximum number of connection attempts
+        **kwargs: Additional arguments passed to create_engine
+    
+    Returns:
+        SQLAlchemy engine instance
+    
+    Raises:
+        Exception: If all retry attempts fail
+    """
+    for attempt in range(1, max_retries + 1):
+        try:
+            engine = create_engine(url, **kwargs)
+            
+            # Test connection
+            with engine.connect() as conn:
+                conn.execute("SELECT 1")
+            
+            logger.info("✅ Database connection established (attempt %d/%d)", attempt, max_retries)
+            return engine
+            
+        except Exception as e:
+            if attempt == max_retries:
+                logger.error("❌ Database connection failed after %d attempts: %s", max_retries, e)
+                raise
+            
+            wait_time = 2 ** attempt  # Exponential backoff: 2s, 4s, 8s
+            logger.warning(
+                "⚠️  Database connection attempt %d/%d failed: %s. Retrying in %ds...",
+                attempt, max_retries, e, wait_time
+            )
+            time.sleep(wait_time)
+
+
 if is_sqlite:
-    engine = create_engine(
+    engine = create_engine_with_retry(
         DATABASE_URL,
+        max_retries=1,  # SQLite doesn't need retries
         connect_args={"check_same_thread": False},
     )
 else:
-    engine = create_engine(
+    engine = create_engine_with_retry(
         DATABASE_URL,
+        max_retries=3,
         pool_size=5,
         max_overflow=10,
         pool_pre_ping=True,

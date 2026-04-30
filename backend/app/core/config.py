@@ -52,10 +52,10 @@ class Settings:
     LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1024"))
     
     # ── LangSmith (Observability) ─────────────────────────────────────
-    LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY")
-    LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "InvIQ")
-    LANGSMITH_TRACING = os.getenv("LANGSMITH_TRACING", "false")
-    LANGSMITH_ENDPOINT = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
+    LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY")
+    LANGCHAIN_PROJECT = os.getenv("LANGCHAIN_PROJECT", "InvIQ")
+    LANGCHAIN_TRACING_V2 = os.getenv("LANGCHAIN_TRACING_V2", "false")
+    LANGCHAIN_ENDPOINT = os.getenv("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com")
     
     # ── ChromaDB (Vector Store) ───────────────────────────────────────
     CHROMADB_ENABLED = os.getenv("CHROMADB_ENABLED", "true").lower() == "true"
@@ -114,16 +114,41 @@ settings = Settings()
 def _validate_production_config():
     """Fail loudly if critical secrets are using insecure defaults in production."""
     if settings.ENVIRONMENT == "production":
+        # Check SECRET_KEY
         if settings.SECRET_KEY == "your-super-secret-key-change-in-production":
             raise ValueError(
                 "FATAL: SECRET_KEY is still the insecure default! "
                 "Generate a secure key with: openssl rand -hex 32"
             )
+        
+        # Check ADMIN_PASSWORD
         if settings.ADMIN_PASSWORD == "":
             logger.warning(
                 "⚠️  ADMIN_PASSWORD is empty. "
                 "Set ADMIN_PASSWORD env var to a strong password for production."
             )
+        
+        # Validate required environment variables
+        required_vars = {
+            "DATABASE_URL": settings.DATABASE_URL,
+            "SECRET_KEY": settings.SECRET_KEY,
+        }
+        
+        missing = [k for k, v in required_vars.items() if not v or v == ""]
+        if missing:
+            raise ValueError(
+                f"FATAL: Missing required environment variables for production: {', '.join(missing)}"
+            )
+        
+        # Warn about optional but recommended vars
+        if not settings.GROQ_API_KEY:
+            logger.warning("⚠️  GROQ_API_KEY not set — AI chatbot will be disabled")
+        
+        if not settings.UPSTASH_REDIS_REST_URL or not settings.UPSTASH_REDIS_REST_TOKEN:
+            logger.warning("⚠️  Upstash Redis not configured — using in-memory fallback for caching")
+        
+        logger.info("✅ Production configuration validated successfully")
+        
     elif settings.SECRET_KEY == "your-super-secret-key-change-in-production":
         logger.warning(
             "SECRET_KEY is using the insecure default — acceptable for local dev only. "
@@ -135,18 +160,18 @@ _validate_production_config()
 
 
 def configure_langsmith():
-    """Configure LangSmith observability using LANGSMITH_* environment variables."""
-    if settings.LANGSMITH_API_KEY:
-        os.environ["LANGSMITH_API_KEY"] = settings.LANGSMITH_API_KEY
-        os.environ["LANGSMITH_PROJECT"] = settings.LANGSMITH_PROJECT
-        os.environ["LANGSMITH_TRACING"] = "true"
-        os.environ["LANGSMITH_ENDPOINT"] = settings.LANGSMITH_ENDPOINT
+    """Configure LangSmith observability using LANGCHAIN_* environment variables."""
+    if settings.LANGCHAIN_API_KEY:
+        os.environ["LANGCHAIN_API_KEY"] = settings.LANGCHAIN_API_KEY
+        os.environ["LANGCHAIN_PROJECT"] = settings.LANGCHAIN_PROJECT
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        os.environ["LANGCHAIN_ENDPOINT"] = settings.LANGCHAIN_ENDPOINT
         logger.info(
-            "✅ LangSmith tracing enabled → project: %s", settings.LANGSMITH_PROJECT
+            "✅ LangSmith tracing enabled → project: %s", settings.LANGCHAIN_PROJECT
         )
     else:
-        os.environ["LANGSMITH_TRACING"] = "false"
-        logger.info("LangSmith tracing disabled — LANGSMITH_API_KEY not set")
+        os.environ["LANGCHAIN_TRACING_V2"] = "false"
+        logger.info("LangSmith tracing disabled — LANGCHAIN_API_KEY not set")
 
 
 configure_langsmith()
